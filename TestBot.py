@@ -475,6 +475,7 @@ async def actualizar_resumen():
         return True
     except Exception as e:
         logger.error(f"Error al actualizar la hoja Resumen: {e}")
+        
         return False
 
 # === Manejar errores ===
