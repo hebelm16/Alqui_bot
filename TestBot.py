@@ -6,14 +6,7 @@ import datetime
 import os
 import logging
 import time
-
-# Intentar cargar dotenv si está disponible
-try:
-    from dotenv import load_dotenv
-    load_dotenv()  # Carga variables desde .env
-    print("Variables de entorno cargadas desde .env")
-except ImportError:
-    print("Módulo python-dotenv no encontrado. Usando variables de entorno del sistema.")
+import json  # Asegúrate de importar json
 
 # Configuración de logging
 logging.basicConfig(
@@ -24,16 +17,15 @@ logger = logging.getLogger(__name__)
 
 # === Google Sheets Setup ===
 try:
-    # Ruta al archivo de credenciales
-    CREDS_FILE = "creds.json"
-    
-    # Verificar si existe el archivo de credenciales
-    if not os.path.exists(CREDS_FILE):
-        logger.error(f"Archivo de credenciales {CREDS_FILE} no encontrado. Revisa la documentación para crear este archivo.")
+    # Obtener credenciales desde variable de entorno
+    google_creds_json = os.getenv("GOOGLE_CREDS")
+    if not google_creds_json:
+        logger.error("Variable GOOGLE_CREDS no encontrada en variables de entorno")
         exit(1)
     
+    # Crear credenciales desde el JSON en variable de entorno
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_file(CREDS_FILE, scopes=scope)
+    creds = Credentials.from_service_account_info(info=json.loads(google_creds_json), scopes=scope)
     client = gspread.authorize(creds)
     
     # Nombre de la hoja de cálculo
