@@ -334,8 +334,7 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         mensaje += f"🏦 *Monto Neto:* RD${monto_neto:.2f}\n\n"
         
         # Agregar últimos pagos
-        mensaje += "📥 *Últimos Pagos:*
-"
+        mensaje += "📥 *Últimos Pagos:*\n" 
         if ultimos_pagos:
             for i, pago in enumerate(ultimos_pagos, 1):
                 try:
