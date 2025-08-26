@@ -22,6 +22,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# === Configuración ===
+# Lista de IDs de usuarios autorizados.
+# Reemplaza 123456789 con tu ID de usuario de Telegram.
+# Puedes obtener tu ID hablando con el bot @userinfobot
+AUTHORIZED_USERS = [13814098]
+
+# Tasa de comisión (ej: 0.05 para 5%)
+COMMISSION_RATE = 0.05
+
 # === Google Sheets Setup ===
 try:
     # Ruta al archivo de credenciales
@@ -87,9 +96,9 @@ try:
         
         # Configurar filas principales
         sheet_resumen.update('A2:A5', [
-            ["Total Ingresos"], 
-            ["Total Comisión (5%)"], 
-            ["Total Gastos"], 
+            ["Total Ingresos"],
+            [f"Total Comisión ({COMMISSION_RATE:.0%})"], 
+            ["Total Gastos"],
             ["Monto Neto"]
         ])
         
@@ -108,9 +117,9 @@ except gspread.exceptions.WorksheetNotFound:
     
     # Configurar filas principales
     sheet_resumen.update('A2:A5', [
-        ["Total Ingresos"], 
-        ["Total Comisión (5%)"], 
-        ["Total Gastos"], 
+        ["Total Ingresos"],
+        [f"Total Comisión ({COMMISSION_RATE:.0%})"], 
+        ["Total Gastos"],
         ["Monto Neto"]
     ])
     
@@ -122,13 +131,15 @@ except gspread.exceptions.WorksheetNotFound:
 # === Estados de conversación ===
 MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC = range(5)
 
-# === Estado temporal ===
-ultimo_registro = {}
-
 # === Funciones ===
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    keyboard = [[
+    user_id = update.effective_user.id
+    if user_id not in AUTHORIZED_USERS:
+        await update.message.reply_text("❌ No tienes permiso para usar este bot.")
+        return ConversationHandler.END
+
+    keyboard = [[ 
         KeyboardButton("📥 Registrar Pago"),
         KeyboardButton("💸 Registrar Gasto")
     ], [
@@ -180,14 +191,14 @@ async def pago_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         sheet_pagos.append_row([fecha, nombre, monto])
         
         # Guardar referencia al último registro para poder deshacerlo
-        ultimo_registro[update.effective_user.id] = ('pago', len(sheet_pagos.get_all_values()))
+        context.user_data['ultimo_registro'] = ('pago', len(sheet_pagos.get_all_values()))
         
         # Actualizar resumen
         await actualizar_resumen()
         
         # Confirmar al usuario
         await update.message.reply_text(
-            f"✅ Pago registrado correctamente:\n"
+            f"✅ Pago registrado correctamente:\n" 
             f"📅 Fecha: {fecha}\n"
             f"👤 Inquilino: {nombre}\n"
             f"💵 Monto: RD${monto:.2f}", 
@@ -243,14 +254,14 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         sheet_gastos.append_row([fecha, descripcion, monto])
         
         # Guardar referencia al último registro para poder deshacerlo
-        ultimo_registro[update.effective_user.id] = ('gasto', len(sheet_gastos.get_all_values()))
+        context.user_data['ultimo_registro'] = ('gasto', len(sheet_gastos.get_all_values()))
         
         # Actualizar resumen
         await actualizar_resumen()
         
         # Confirmar al usuario
         await update.message.reply_text(
-            f"✅ Gasto registrado correctamente:\n"
+            f"✅ Gasto registrado correctamente:\n" 
             f"📅 Fecha: {fecha}\n"
             f"📝 Descripción: {descripcion}\n"
             f"💸 Monto: RD${monto:.2f}", 
@@ -279,12 +290,13 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         total_comision = "0.00"
         total_gastos = "0.00"
         monto_neto = "0.00"
+        comision_label = f"Total Comisión ({COMMISSION_RATE:.0%})"
         
         for fila in datos_resumen:
             if len(fila) >= 2:
                 if fila[0].strip() == "Total Ingresos":
                     total_ingresos = fila[1].replace("RD$", "").replace(",", "").strip()
-                elif fila[0].strip() == "Total Comisión (5%)":
+                elif comision_label in fila[0]:
                     total_comision = fila[1].replace("RD$", "").replace(",", "").strip()
                 elif fila[0].strip() == "Total Gastos":
                     total_gastos = fila[1].replace("RD$", "").replace(",", "").strip()
@@ -317,12 +329,13 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         # Preparar mensaje de resumen
         mensaje = "📊 *RESUMEN DE ALQUILERES*\n\n"
         mensaje += f"💰 *Total Ingresos:* RD${total_ingresos:.2f}\n"
-        mensaje += f"💼 *Total Comisión:* RD${total_comision:.2f}\n"
+        mensaje += f"💼 *{comision_label}:* RD${total_comision:.2f}\n"
         mensaje += f"💸 *Total Gastos:* RD${total_gastos:.2f}\n"
         mensaje += f"🏦 *Monto Neto:* RD${monto_neto:.2f}\n\n"
         
         # Agregar últimos pagos
-        mensaje += "📥 *Últimos Pagos:*\n"
+        mensaje += "📥 *Últimos Pagos:*
+"
         if ultimos_pagos:
             for i, pago in enumerate(ultimos_pagos, 1):
                 try:
@@ -336,7 +349,8 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         else:
             mensaje += "No hay pagos registrados\n"
         
-        mensaje += "\n💸 *Últimos Gastos:*\n"
+        mensaje += "\n💸 *Últimos Gastos:*
+"
         if ultimos_gastos:
             for i, gasto in enumerate(ultimos_gastos, 1):
                 try:
@@ -375,14 +389,12 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
 # === Deshacer ===
 async def deshacer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    user_id = update.effective_user.id
-    
-    if user_id not in ultimo_registro:
+    if 'ultimo_registro' not in context.user_data:
         await update.message.reply_text("No hay ningún registro reciente para deshacer.", reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
         return MENU
     
     try:
-        tipo, fila = ultimo_registro[user_id]
+        tipo, fila = context.user_data['ultimo_registro']
         
         if tipo == 'pago':
             # Obtener detalles del pago antes de eliminarlo
@@ -409,7 +421,7 @@ async def deshacer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True)
             )
         
-        del ultimo_registro[user_id]
+        del context.user_data['ultimo_registro']
         return MENU
     except Exception as e:
         logger.error(f"Error al deshacer registro: {e}")
@@ -457,13 +469,14 @@ async def actualizar_resumen():
                     logger.warning(f"Valor no numérico en gastos: {fila[2]}")
         
         # Calcular comisión y neto
-        total_comision = total_pagos * 0.05  # 5% de comisión
+        total_comision = total_pagos * COMMISSION_RATE
         monto_neto = total_pagos - total_comision - total_gastos
         
         # Pequeño retraso antes de actualizar
         time.sleep(1)
         
         # Actualizar la hoja Resumen con formato RD$
+        sheet_resumen.update('A3', f"Total Comisión ({COMMISSION_RATE:.0%})")
         sheet_resumen.update('B2:B5', [
             [f"RD${total_pagos:.2f}"],
             [f"RD${total_comision:.2f}"],
