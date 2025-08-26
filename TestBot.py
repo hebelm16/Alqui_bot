@@ -24,8 +24,6 @@ logger = logging.getLogger(__name__)
 
 # === Configuración ===
 # Lista de IDs de usuarios autorizados.
-# Reemplaza 123456789 con tu ID de usuario de Telegram.
-# Puedes obtener tu ID hablando con el bot @userinfobot
 AUTHORIZED_USERS = [13814098]
 
 # Tasa de comisión (ej: 0.05 para 5%)
@@ -334,7 +332,8 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         mensaje += f"🏦 *Monto Neto:* RD${monto_neto:.2f}\n\n"
         
         # Agregar últimos pagos
-        mensaje += "📥 *Últimos Pagos:*\n" 
+        mensaje += "📥 *Últimos Pagos:*
+"
         if ultimos_pagos:
             for i, pago in enumerate(ultimos_pagos, 1):
                 try:
