@@ -1,11 +1,14 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
 import logging
+import asyncio
 from config import BOT_TOKEN
-from database import inicializar_db
+from database import inicializar_db, init_pool, close_pool
 from handlers import (
-    start, pago_inicio, pago_monto, pago_nombre, gasto_inicio, gasto_monto, 
-    gasto_desc, ver_resumen, deshacer, volver, cancelar, error_handler, 
-    MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC
+    start, pago_inicio, pago_monto, pago_nombre, gasto_inicio, gasto_monto,
+    gasto_desc, ver_resumen, informe_inicio, informe_mes_actual, informe_pedir_mes,
+    informe_pedir_anio, generar_informe_mensual_custom, deshacer_menu, deshacer_pago_handler,
+    deshacer_gasto_handler, volver_menu, error_handler, volver_menu_principal,
+    MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC, INFORME_MES, INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR
 )
 
 # Configuración de logging
@@ -14,8 +17,10 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-def main():
-    inicializar_db()
+async def main_async():
+    await init_pool()
+    await inicializar_db()
+
     if not BOT_TOKEN:
         logging.critical("ERROR: No se encontró el token del bot. Define la variable de entorno BOT_TOKEN.")
         exit(1)
@@ -30,17 +35,36 @@ def main():
                     MessageHandler(filters.Regex("^📥 Registrar Pago$"), pago_inicio),
                     MessageHandler(filters.Regex("^💸 Registrar Gasto$"), gasto_inicio),
                     MessageHandler(filters.Regex("^📊 Ver Resumen$"), ver_resumen),
-                    MessageHandler(filters.Regex("^🗑️ Deshacer último registro$"), deshacer),
-                    MessageHandler(filters.Regex("^⬅️ Volver al menú$"), volver),
+                    MessageHandler(filters.Regex("^📈 Generar Informe$"), informe_inicio),
+                    MessageHandler(filters.Regex("^🗑️ Deshacer$"), deshacer_menu),
                 ],
                 PAGO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_monto)],
                 PAGO_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_nombre)],
                 GASTO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_monto)],
-                GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_desc)]
+                GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_desc)],
+                INFORME_MES: [
+                    MessageHandler(filters.Regex("^Informe Mes Actual$"), informe_mes_actual),
+                    MessageHandler(filters.Regex("^Elegir Mes y Año$"), informe_pedir_mes),
+                    MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
+                ],
+                INFORME_ANIO: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, informe_pedir_anio),
+                    MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
+                ],
+                INFORME_GENERAR: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, generar_informe_mensual_custom),
+                    MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
+                ],
+                DESHACER_MENU: [
+                    MessageHandler(filters.Regex("^🗑️ Deshacer Último Pago$"), deshacer_pago_handler),
+                    MessageHandler(filters.Regex("^🗑️ Deshacer Último Gasto$"), deshacer_gasto_handler),
+                    MessageHandler(filters.Regex("^⬅️ Volver al Menú$"), volver_menu_principal),
+                ],
             },
             fallbacks=[
-                CommandHandler("cancel", cancelar),
-                MessageHandler(filters.Regex("^❌ Cancelar$"), cancelar)
+                CommandHandler("cancel", volver_menu),
+                MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
+                MessageHandler(filters.Regex("^⬅️ Volver al menú$"), volver_menu_principal),
             ]
         )
 
@@ -48,10 +72,12 @@ def main():
         app.add_error_handler(error_handler)
 
         print("Bot iniciado correctamente! Presiona Ctrl+C para detener.")
-        app.run_polling()
+        await app.run_polling()
 
     except Exception as e:
         logging.critical(f"Error al iniciar el bot: {e}")
+    finally:
+        await close_pool()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main_async())
