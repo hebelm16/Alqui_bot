@@ -10,8 +10,10 @@ def get_db_connection():
     try:
         database_url = os.getenv("DATABASE_URL")
         if database_url:
+            logger.info(f"Attempting to connect using DATABASE_URL: {database_url}")
             conn = psycopg2.connect(database_url)
         else:
+            logger.info(f"DATABASE_URL not found. Attempting to connect using individual parameters: host={DB_HOST}, port={DB_PORT}, dbname={DB_NAME}, user={DB_USER}")
             conn = psycopg2.connect(
                 host=DB_HOST,
                 port=DB_PORT,
