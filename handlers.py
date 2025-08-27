@@ -1,6 +1,6 @@
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler
-import datetime
+from datetime import date
 import logging
 from database import (
     registrar_pago, registrar_gasto, obtener_resumen,
@@ -66,7 +66,7 @@ async def pago_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         
     nombre = texto
     monto = context.user_data['pago_monto']
-    fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    fecha = date.today()
     
     try:
         pago_id = registrar_pago(fecha, nombre, monto)
@@ -74,7 +74,7 @@ async def pago_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         
         await update.message.reply_text(
             f"✅ Pago registrado correctamente:\n"
-            f"📅 Fecha: {fecha}\n"
+            f"📅 Fecha: {fecha.strftime("%d/%m/%Y")}\n"
             f"👤 Inquilino: {nombre}\n"
             f"💵 Monto: RD${monto:.2f}", 
             reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True)
@@ -117,7 +117,7 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         
     descripcion = texto
     monto = context.user_data['gasto_monto']
-    fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    fecha = date.today()
     
     try:
         gasto_id = registrar_gasto(fecha, descripcion, monto)
@@ -125,7 +125,7 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         
         await update.message.reply_text(
             f"✅ Gasto registrado correctamente:\n"
-            f"📅 Fecha: {fecha}\n"
+            f"📅 Fecha: {fecha.strftime("%d/%m/%Y")}\n"
             f"📝 Descripción: {descripcion}\n"
             f"💸 Monto: RD${monto:.2f}", 
             reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True)
@@ -171,7 +171,7 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
                 # Escapar el nombre del inquilino para evitar problemas con MarkdownV2
                 nombre_escapado = escape_markdown(pago[1], version=2)
                 monto_escapado = escape_markdown(f"RD${float(pago[2]):.2f}", version=2)
-                fecha_escapada = escape_markdown(pago[0], version=2)
+                fecha_escapada = escape_markdown(pago[0].strftime("%d/%m/%Y"), version=2)
                 mensaje += f"{i}. {nombre_escapado}: {monto_escapado} ({fecha_escapada})\n"
 
         else:
@@ -183,7 +183,7 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
                 # Escapar la descripción del gasto para evitar problemas con MarkdownV2
                 descripcion_escapada = escape_markdown(gasto[1], version=2)
                 monto_escapado = escape_markdown(f"RD${float(gasto[2]):.2f}", version=2)
-                fecha_escapada = escape_markdown(gasto[0], version=2)
+                fecha_escapada = escape_markdown(gasto[0].strftime("%d/%m/%Y"), version=2)
                 mensaje += f"{i}. {descripcion_escapada}: {monto_escapado} ({fecha_escapada})\n"
         else:
             mensaje += "No hay gastos registrados\n"

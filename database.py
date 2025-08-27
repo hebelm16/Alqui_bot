@@ -38,7 +38,7 @@ def inicializar_db():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS pagos (
                 id SERIAL PRIMARY KEY,
-                fecha TEXT NOT NULL,
+                fecha DATE NOT NULL,
                 inquilino TEXT NOT NULL,
                 monto REAL NOT NULL
             )
@@ -48,7 +48,7 @@ def inicializar_db():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS gastos (
                 id SERIAL PRIMARY KEY,
-                fecha TEXT NOT NULL,
+                fecha DATE NOT NULL,
                 descripcion TEXT NOT NULL,
                 monto REAL NOT NULL
             )
@@ -168,25 +168,20 @@ def obtener_informe_mensual(mes: int, anio: int) -> dict:
         con = get_db_connection() # Changed
         cur = con.cursor()
 
-        # Formato de fecha en la DB es "DD/MM/YYYY HH:MM"
-        # Necesitamos filtrar por mes y año
-        # Usamos substring para buscar el patrón de mes/año en la fecha
-        mes_str = f"{mes:02d}" # Asegura que el mes tenga 2 dígitos (ej: 01, 02)
-
         # Total Ingresos para el mes/año
-        cur.execute(f"SELECT SUM(monto) FROM pagos WHERE substring(fecha, 4, 2) = %s AND substring(fecha, 7, 4) = %s", (mes_str, str(anio))) # Changed substring and placeholders
+        cur.execute("SELECT SUM(monto) FROM pagos WHERE EXTRACT(MONTH FROM fecha) = %s AND EXTRACT(YEAR FROM fecha) = %s", (mes, anio))
         total_pagos_mes = cur.fetchone()[0] or 0.0
 
         # Total Gastos para el mes/año
-        cur.execute(f"SELECT SUM(monto) FROM gastos WHERE substring(fecha, 4, 2) = %s AND substring(fecha, 7, 4) = %s", (mes_str, str(anio))) # Changed substring and placeholders
+        cur.execute("SELECT SUM(monto) FROM gastos WHERE EXTRACT(MONTH FROM fecha) = %s AND EXTRACT(YEAR FROM fecha) = %s", (mes, anio))
         total_gastos_mes = cur.fetchone()[0] or 0.0
         
         # Pagos del mes
-        cur.execute(f"SELECT fecha, inquilino, monto FROM pagos WHERE substring(fecha, 4, 2) = %s AND substring(fecha, 7, 4) = %s ORDER BY id ASC", (mes_str, str(anio))) # Changed substring and placeholders
+        cur.execute("SELECT fecha, inquilino, monto FROM pagos WHERE EXTRACT(MONTH FROM fecha) = %s AND EXTRACT(YEAR FROM fecha) = %s ORDER BY id ASC", (mes, anio))
         pagos_mes = cur.fetchall()
 
         # Gastos del mes
-        cur.execute(f"SELECT fecha, descripcion, monto FROM gastos WHERE substring(fecha, 4, 2) = %s AND substring(fecha, 7, 4) = %s ORDER BY id ASC", (mes_str, str(anio))) # Changed substring and placeholders
+        cur.execute("SELECT fecha, descripcion, monto FROM gastos WHERE EXTRACT(MONTH FROM fecha) = %s AND EXTRACT(YEAR FROM fecha) = %s ORDER BY id ASC", (mes, anio))
         gastos_mes = cur.fetchall()
 
         con.close()
