@@ -17,67 +17,74 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-async def main_async():
+async def post_init_with_db(application: Application):
+    """Función asíncrona para ejecutar después de la inicialización de la aplicación."""
     await init_pool()
     await inicializar_db()
+    logging.info("Pool de DB y tablas inicializados.")
 
+async def main_async():
     if not BOT_TOKEN:
         logging.critical("ERROR: No se encontró el token del bot. Define la variable de entorno BOT_TOKEN.")
         exit(1)
 
-    try:
-        app = Application.builder().token(BOT_TOKEN).build()
+    # Configurar la aplicación usando los hooks post_init y post_shutdown
+    # para manejar el ciclo de vida de la conexión a la DB.
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .post_init(post_init_with_db)
+        .post_shutdown(close_pool)
+        .build()
+    )
 
-        conv_handler = ConversationHandler(
-            entry_points=[CommandHandler("start", start)],
-            states={
-                MENU: [
-                    MessageHandler(filters.Regex("^📥 Registrar Pago$"), pago_inicio),
-                    MessageHandler(filters.Regex("^💸 Registrar Gasto$"), gasto_inicio),
-                    MessageHandler(filters.Regex("^📊 Ver Resumen$"), ver_resumen),
-                    MessageHandler(filters.Regex("^📈 Generar Informe$"), informe_inicio),
-                    MessageHandler(filters.Regex("^🗑️ Deshacer$"), deshacer_menu),
-                ],
-                PAGO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_monto)],
-                PAGO_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_nombre)],
-                GASTO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_monto)],
-                GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_desc)],
-                INFORME_MES: [
-                    MessageHandler(filters.Regex("^Informe Mes Actual$"), informe_mes_actual),
-                    MessageHandler(filters.Regex("^Elegir Mes y Año$"), informe_pedir_mes),
-                    MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
-                ],
-                INFORME_ANIO: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, informe_pedir_anio),
-                    MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
-                ],
-                INFORME_GENERAR: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, generar_informe_mensual_custom),
-                    MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
-                ],
-                DESHACER_MENU: [
-                    MessageHandler(filters.Regex("^🗑️ Deshacer Último Pago$"), deshacer_pago_handler),
-                    MessageHandler(filters.Regex("^🗑️ Deshacer Último Gasto$"), deshacer_gasto_handler),
-                    MessageHandler(filters.Regex("^⬅️ Volver al Menú$"), volver_menu_principal),
-                ],
-            },
-            fallbacks=[
-                CommandHandler("cancel", volver_menu),
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            MENU: [
+                MessageHandler(filters.Regex("^📥 Registrar Pago$"), pago_inicio),
+                MessageHandler(filters.Regex("^💸 Registrar Gasto$"), gasto_inicio),
+                MessageHandler(filters.Regex("^📊 Ver Resumen$"), ver_resumen),
+                MessageHandler(filters.Regex("^📈 Generar Informe$"), informe_inicio),
+                MessageHandler(filters.Regex("^🗑️ Deshacer$"), deshacer_menu),
+            ],
+            PAGO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_monto)],
+            PAGO_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_nombre)],
+            GASTO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_monto)],
+            GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_desc)],
+            INFORME_MES: [
+                MessageHandler(filters.Regex("^Informe Mes Actual$"), informe_mes_actual),
+                MessageHandler(filters.Regex("^Elegir Mes y Año$"), informe_pedir_mes),
                 MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
-                MessageHandler(filters.Regex("^⬅️ Volver al menú$"), volver_menu_principal),
-            ]
-        )
+            ],
+            INFORME_ANIO: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, informe_pedir_anio),
+                MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
+            ],
+            INFORME_GENERAR: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, generar_informe_mensual_custom),
+                MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
+            ],
+            DESHACER_MENU: [
+                MessageHandler(filters.Regex("^🗑️ Deshacer Último Pago$"), deshacer_pago_handler),
+                MessageHandler(filters.Regex("^🗑️ Deshacer Último Gasto$"), deshacer_gasto_handler),
+                MessageHandler(filters.Regex("^⬅️ Volver al Menú$"), volver_menu_principal),
+            ],
+        },
+        fallbacks=[
+            CommandHandler("cancel", volver_menu),
+            MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
+            MessageHandler(filters.Regex("^⬅️ Volver al menú$"), volver_menu_principal),
+        ]
+    )
 
-        app.add_handler(conv_handler)
-        app.add_error_handler(error_handler)
+    app.add_handler(conv_handler)
+    app.add_error_handler(error_handler)
 
-        print("Bot iniciado correctamente! Presiona Ctrl+C para detener.")
-        await app.run_polling()
-
-    except Exception as e:
-        logging.critical(f"Error al iniciar el bot: {e}")
-    finally:
-        await close_pool()
+    print("Bot iniciado correctamente! Presiona Ctrl+C para detener.")
+    
+    # run_polling ahora maneja el ciclo de vida completo, incluyendo nuestras funciones de init/shutdown.
+    await app.run_polling()
 
 if __name__ == '__main__':
     asyncio.run(main_async())
