@@ -5,8 +5,8 @@ from database import inicializar_db
 from handlers import (
     start, pago_inicio, pago_monto, pago_nombre, gasto_inicio, gasto_monto, 
     gasto_desc, ver_resumen, deshacer, volver, cancelar, error_handler, 
-    informe_inicio, informe_mes, informe_anio, 
-    MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC, INFORME_MES, INFORME_ANIO
+    informe_inicio, informe_mes, 
+    MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC, INFORME_MES
 )
 
 # Configuración de logging
@@ -39,8 +39,7 @@ def main():
                 PAGO_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_nombre)],
                 GASTO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_monto)],
                 GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_desc)],
-                INFORME_MES: [MessageHandler(filters.TEXT & ~filters.COMMAND, informe_mes)],
-                INFORME_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, informe_anio)]
+                INFORME_MES: [MessageHandler(filters.TEXT & ~filters.COMMAND, informe_mes)]
             },
             fallbacks=[
                 CommandHandler("cancel", cancelar),

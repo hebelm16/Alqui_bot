@@ -12,7 +12,7 @@ from config import AUTHORIZED_USERS, COMMISSION_RATE
 logger = logging.getLogger(__name__)
 
 # === Estados de conversación ===
-MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC, INFORME_MES, INFORME_ANIO = range(7)
+MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC, INFORME_MES = range(6)
 
 # === Funciones de Handlers ===
 
@@ -205,58 +205,7 @@ async def informe_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         await update.message.reply_text("Mes inválido. Por favor, introduce un número entre 1 y 12:")
         return INFORME_MES
 
-async def informe_anio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    texto = update.message.text.strip()
-    if texto == "❌ Cancelar":
-        return await volver(update, context)
-    
-    try:
-        anio = int(texto)
-        if not (2000 <= anio <= datetime.datetime.now().year + 1): # Rango razonable de años
-            raise ValueError("Año fuera de rango")
-        context.user_data['informe_anio'] = anio
-        
-        mes = context.user_data['informe_mes']
-        
-        # Generar informe
-        informe_data = obtener_informe_mensual(mes, anio)
-        
-        mensaje = f"""📊 *INFORME MENSUAL - {mes}/{anio}*\n\n"""
-        mensaje += f"💰 *Total Ingresos:* RD${informe_data['total_ingresos']:.2f}\n"
-        mensaje += f"💼 *Total Comisión ({COMMISSION_RATE:.0%}):* RD${informe_data['total_comision']:.2f}\n"
-        mensaje += f"💸 *Total Gastos:* RD${informe_data['total_gastos']:.2f}\n"
-        mensaje += f"🏦 *Monto Neto:* RD${informe_data['monto_neto']:.2f}\n\n"
 
-        mensaje += "📥 *Pagos del Mes:*
-"
-        if informe_data['pagos_mes']:
-            for i, pago in enumerate(informe_data['pagos_mes'], 1):
-                mensaje += f"{i}. {pago[1]}: RD${pago[2]:.2f} ({pago[0].split(' ')[0]})
-" # Solo fecha
-        else:
-            mensaje += "No hay pagos registrados para este mes.
-"
-
-        mensaje += "
-💸 *Gastos del Mes:*
-"
-        if informe_data['gastos_mes']:
-            for i, gasto in enumerate(informe_data['gastos_mes'], 1):
-                mensaje += f"{i}. {gasto[1]}: RD${gasto[2]:.2f} ({gasto[0].split(' ')[0]})
-" # Solo fecha
-        else:
-            mensaje += "No hay gastos registrados para este mes.
-"
-        
-        await update.message.reply_text(mensaje, parse_mode="Markdown", reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
-        return MENU
-    except ValueError:
-        await update.message.reply_text("Año inválido. Por favor, introduce un año válido (ej: 2023):\n")
-        return INFORME_ANIO
-    except Exception as e:
-        logger.error(f"Error al generar informe mensual: {e}")
-        await update.message.reply_text("❌ Hubo un error al generar el informe mensual.", reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
-        return MENU
 
 
 async def deshacer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
