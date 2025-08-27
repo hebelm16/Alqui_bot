@@ -280,14 +280,19 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'ultimos_pagos',
     mensaje += "📥 *Pagos:*\n"
     if data[item_key_pagos]:
         for i, pago in enumerate(data[item_key_pagos], 1):
-            fecha_str, inquilino, monto = pago
-            fecha_dt = parse_date_string(fecha_str)
+            fecha_obj, inquilino, monto = pago
+            # If fecha_obj is already a date/datetime object, use it directly
+            if isinstance(fecha_obj, (date, datetime)):
+                fecha_dt = fecha_obj
+            else:
+                # Otherwise, try to parse it as a string
+                fecha_dt = parse_date_string(fecha_obj)
 
             if fecha_dt:
                 mensaje += f"{i}\\.* {escape_markdown(inquilino, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({fecha_dt.strftime('%d/%m/%Y')}\)\n"
             else:
                 # Fallback if parsing fails, display raw string
-                mensaje += f"{i}\\.* {escape_markdown(inquilino, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({escape_markdown(fecha_str, version=2)}\)\n"
+                mensaje += f"{i}\\.* {escape_markdown(inquilino, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({escape_markdown(str(fecha_obj), version=2)}\)\n"
     else:
         mensaje += "No hay pagos registrados\.
 "
@@ -295,15 +300,20 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'ultimos_pagos',
     mensaje += "\n💸 *Gastos:*\n"
     if data[item_key_gastos]:
         for i, gasto in enumerate(data[item_key_gastos], 1):
-            fecha_str, descripcion, monto = gasto
-            fecha_dt = parse_date_string(fecha_str)
+            fecha_obj, descripcion, monto = gasto
+            # If fecha_obj is already a date/datetime object, use it directly
+            if isinstance(fecha_obj, (date, datetime)):
+                fecha_dt = fecha_obj
+            else:
+                # Otherwise, try to parse it as a string
+                fecha_dt = parse_date_string(fecha_obj)
 
             if fecha_dt:
-                mensaje += f"{i}\\.* {escape_markdown(descripcion, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({fecha_dt.strftime('%d/%m/%Y')}\)\n"
+                mensaje += f"{i}\.* {escape_markdown(descripcion, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({fecha_dt.strftime('%d/%m/%Y')}\)\n"
             else:
                 # Fallback if parsing fails, display raw string
-                mensaje += f"{i}\\.* {escape_markdown(descripcion, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({escape_markdown(fecha_str, version=2)}\)\n"
+                mensaje += f"{i}\.* {escape_markdown(descripcion, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({escape_markdown(str(fecha_obj), version=2)}\)\n"
     else:
-        mensaje += "No hay gastos registrados\\.\n"
+        mensaje += "No hay gastos registrados\.\n"
 
     return mensaje
