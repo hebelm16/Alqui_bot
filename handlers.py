@@ -161,14 +161,14 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 """
         if ultimos_pagos:
             for i, pago in enumerate(ultimos_pagos, 1):
-                mensaje += f"{i}. {pago[1]}: RD${float(pago[2]):.2f} ({pago[0]})".replace('\n', '\\n') + "\n"
+                mensaje += f"{i}. {pago[1]}: RD${float(pago[2]):.2f} ({pago[0]})\n"
         else:
             mensaje += "No hay pagos registrados\n"
 
         mensaje += "\n💸 *Últimos Gastos:\n"
         if ultimos_gastos:
             for i, gasto in enumerate(ultimos_gastos, 1):
-                mensaje += f"{i}. {gasto[1]}: RD${float(gasto[2]):.2f} ({gasto[0]})".replace('\n', '\\n') + "\n"
+                mensaje += f"{i}. {gasto[1]}: RD${float(gasto[2]):.2f} ({gasto[0]})\n"
         else:
             mensaje += "No hay gastos registrados\n"
 
@@ -227,19 +227,25 @@ async def informe_anio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         mensaje += f"💸 *Total Gastos:* RD${informe_data['total_gastos']:.2f}\n"
         mensaje += f"🏦 *Monto Neto:* RD${informe_data['monto_neto']:.2f}\n\n"
 
-        mensaje += "📥 *Pagos del Mes:*\n"
+        mensaje += "📥 *Pagos del Mes:*
+"
         if informe_data['pagos_mes']:
             for i, pago in enumerate(informe_data['pagos_mes'], 1):
-                mensaje += f"{i}. {pago[1]}: RD${pago[2]:.2f} ({pago[0].split(' ')[0]})".replace('\n', '\\n') + "\n" # Solo fecha
+                mensaje += f"{i}. {pago[1]}: RD${pago[2]:.2f} ({pago[0].split(' ')[0]})
+" # Solo fecha
         else:
-            mensaje += "No hay pagos registrados para este mes.\n"
+            mensaje += "No hay pagos registrados para este mes.
+"
 
-        mensaje += "\n💸 *Gastos del Mes:*\n"
+        mensaje += "\n💸 *Gastos del Mes:*
+"
         if informe_data['gastos_mes']:
             for i, gasto in enumerate(informe_data['gastos_mes'], 1):
-                mensaje += f"{i}. {gasto[1]}: RD${gasto[2]:.2f} ({gasto[0].split(' ')[0]})".replace('\n', '\\n') + "\n" # Solo fecha
+                mensaje += f"{i}. {gasto[1]}: RD${gasto[2]:.2f} ({gasto[0].split(' ')[0]})
+" # Solo fecha
         else:
-            mensaje += "No hay gastos registrados para este mes.\n"
+            mensaje += "No hay gastos registrados para este mes.
+"
         
         await update.message.reply_text(mensaje, parse_mode="Markdown", reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
         return MENU

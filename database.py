@@ -1,3 +1,4 @@
+import os
 import psycopg2
 import logging
 from config import COMMISSION_RATE, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
@@ -7,13 +8,17 @@ logger = logging.getLogger(__name__)
 def get_db_connection():
     """Establece y retorna una conexión a la base de datos PostgreSQL."""
     try:
-        conn = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD
-        )
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            conn = psycopg2.connect(database_url)
+        else:
+            conn = psycopg2.connect(
+                host=DB_HOST,
+                port=DB_PORT,
+                database=DB_NAME,
+                user=DB_USER,
+                password=DB_PASSWORD
+            )
         return conn
     except psycopg2.Error as e:
         logger.error(f"Error al conectar a la base de datos PostgreSQL: {e}")
