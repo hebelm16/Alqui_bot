@@ -1,6 +1,6 @@
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler
-from datetime import date
+from datetime import date, datetime
 import logging
 from database import (
     registrar_pago, registrar_gasto, obtener_resumen,
@@ -168,10 +168,27 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 """
         if ultimos_pagos:
             for i, pago in enumerate(ultimos_pagos, 1):
-                # Escapar el nombre del inquilino para evitar problemas con MarkdownV2
+                # Ensure fecha is a date object before formatting
+                fecha_obj = pago[0]
+                if isinstance(fecha_obj, str):
+                    try:
+                        # Attempt to parse from "DD/MM/YYYY" or "DD/MM/YYYY HH:MM"
+                        if len(fecha_obj) == 10: # "DD/MM/YYYY"
+                            fecha_obj = datetime.strptime(fecha_obj, "%d/%m/%Y").date()
+                        elif len(fecha_obj) == 16: # "DD/MM/YYYY HH:MM"
+                            fecha_obj = datetime.strptime(fecha_obj, "%d/%m/%Y %H:%M").date()
+                        else:
+                            # Fallback if format is unexpected, use as is (might cause error later)
+                            logger.warning(f"Unexpected date string format for pago: {fecha_obj}")
+                    except ValueError:
+                        logger.error(f"Could not parse date string for pago: {fecha_obj}")
+                        # Fallback to original string if parsing fails
+                        fecha_obj = pago[0]
+
                 nombre_escapado = escape_markdown(pago[1], version=2)
                 monto_escapado = escape_markdown(f"RD${float(pago[2]):.2f}", version=2)
-                fecha_escapada = escape_markdown(pago[0].strftime("%d/%m/%Y"), version=2)
+                # Format only if it's a date object, otherwise use as is
+                fecha_escapada = escape_markdown(fecha_obj.strftime("%d/%m/%Y") if isinstance(fecha_obj, date) else str(fecha_obj), version=2)
                 mensaje += f"{i}. {nombre_escapado}: {monto_escapado} ({fecha_escapada})\n"
 
         else:
@@ -180,10 +197,24 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         mensaje += "\n💸 *Últimos Gastos:\n"
         if ultimos_gastos:
             for i, gasto in enumerate(ultimos_gastos, 1):
-                # Escapar la descripción del gasto para evitar problemas con MarkdownV2
+                # Ensure fecha is a date object before formatting
+                fecha_obj = gasto[0]
+                if isinstance(fecha_obj, str):
+                    try:
+                        # Attempt to parse from "DD/MM/YYYY" or "DD/MM/YYYY HH:MM"
+                        if len(fecha_obj) == 10: # "DD/MM/YYYY"
+                            fecha_obj = datetime.strptime(fecha_obj, "%d/%m/%Y").date()
+                        elif len(fecha_obj) == 16: # "DD/MM/YYYY HH:MM"
+                            fecha_obj = datetime.strptime(fecha_obj, "%d/%m/%Y %H:%M").date()
+                        else:
+                            logger.warning(f"Unexpected date string format for gasto: {fecha_obj}")
+                    except ValueError:
+                        logger.error(f"Could not parse date string for gasto: {fecha_obj}")
+                        fecha_obj = gasto[0]
+
                 descripcion_escapada = escape_markdown(gasto[1], version=2)
                 monto_escapado = escape_markdown(f"RD${float(gasto[2]):.2f}", version=2)
-                fecha_escapada = escape_markdown(gasto[0].strftime("%d/%m/%Y"), version=2)
+                fecha_escapada = escape_markdown(fecha_obj.strftime("%d/%m/%Y") if isinstance(fecha_obj, date) else str(fecha_obj), version=2)
                 mensaje += f"{i}. {descripcion_escapada}: {monto_escapado} ({fecha_escapada})\n"
         else:
             mensaje += "No hay gastos registrados\n"
