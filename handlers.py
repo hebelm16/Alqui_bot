@@ -237,7 +237,8 @@ async def informe_anio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             mensaje += "No hay pagos registrados para este mes.
 "
 
-        mensaje += "\n💸 *Gastos del Mes:*
+        mensaje += "
+💸 *Gastos del Mes:*
 "
         if informe_data['gastos_mes']:
             for i, gasto in enumerate(informe_data['gastos_mes'], 1):
