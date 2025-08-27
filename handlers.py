@@ -143,6 +143,7 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         total_ingresos = resumen_data["total_ingresos"]
         total_comision = resumen_data["total_comision"]
         total_gastos = resumen_data["total_gastos"]
+        comision_label = "Comisión Total"
         monto_neto = resumen_data["monto_neto"]
         ultimos_pagos = resumen_data["ultimos_pagos"]
         ultimos_gastos = resumen_data["ultimos_gastos"]
