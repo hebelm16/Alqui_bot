@@ -4,7 +4,8 @@ import datetime
 import logging
 from database import (
     registrar_pago, registrar_gasto, obtener_resumen,
-    deshacer_ultimo_pago, deshacer_ultimo_gasto
+    deshacer_ultimo_pago, deshacer_ultimo_gasto,
+    obtener_informe_mensual
 )
 from config import AUTHORIZED_USERS, COMMISSION_RATE
 
@@ -160,8 +161,7 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 """
         if ultimos_pagos:
             for i, pago in enumerate(ultimos_pagos, 1):
-                mensaje += f"{i}. {pago[1]}: RD${float(pago[2]):.2f} ({pago[0]})
-"
+                mensaje += f"{i}. {pago[1]}: RD${float(pago[2]):.2f} ({pago[0]})".replace('\n', '\\n') + "\n"
         else:
             mensaje += "No hay pagos registrados\n"
 
@@ -169,8 +169,7 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 "
         if ultimos_gastos:
             for i, gasto in enumerate(ultimos_gastos, 1):
-                mensaje += f"{i}. {gasto[1]}: RD${float(gasto[2]):.2f} ({gasto[0]})
-"
+                mensaje += f"{i}. {gasto[1]}: RD${float(gasto[2]):.2f} ({gasto[0]})".replace('\n', '\\n') + "\n"
         else:
             mensaje += "No hay gastos registrados\n"
 
@@ -182,7 +181,7 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         return MENU
 
 
-async def deshacer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def informe_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [[KeyboardButton("❌ Cancelar")]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text("Para generar el informe, por favor, escribe el número del mes (1-12):", reply_markup=reply_markup)
@@ -223,7 +222,7 @@ async def informe_anio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         # Generar informe
         informe_data = obtener_informe_mensual(mes, anio)
         
-        mensaje = f"📊 *INFORME MENSUAL - {mes}/{anio}*\n\n"
+        mensaje = f"""📊 *INFORME MENSUAL - {mes}/{anio}*\n\n"""
         mensaje += f"💰 *Total Ingresos:* RD${informe_data['total_ingresos']:.2f}\n"
         mensaje += f"💼 *Total Comisión ({COMMISSION_RATE:.0%}):* RD${informe_data['total_comision']:.2f}\n"
         mensaje += f"💸 *Total Gastos:* RD${informe_data['total_gastos']:.2f}\n"
@@ -232,23 +231,21 @@ async def informe_anio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         mensaje += "📥 *Pagos del Mes:*\n"
         if informe_data['pagos_mes']:
             for i, pago in enumerate(informe_data['pagos_mes'], 1):
-                mensaje += f"{i}. {pago[1]}: RD${pago[2]:.2f} ({pago[0].split(' ')[0]})
-" # Solo fecha
+                mensaje += f"{i}. {pago[1]}: RD${pago[2]:.2f} ({pago[0].split(' ')[0]})".replace('\n', '\\n') + "\n" # Solo fecha
         else:
             mensaje += "No hay pagos registrados para este mes.\n"
 
         mensaje += "\n💸 *Gastos del Mes:*\n"
         if informe_data['gastos_mes']:
             for i, gasto in enumerate(informe_data['gastos_mes'], 1):
-                mensaje += f"{i}. {gasto[1]}: RD${gasto[2]:.2f} ({gasto[0].split(' ')[0]})
-" # Solo fecha
+                mensaje += f"{i}. {gasto[1]}: RD${gasto[2]:.2f} ({gasto[0].split(' ')[0]})".replace('\n', '\\n') + "\n" # Solo fecha
         else:
             mensaje += "No hay gastos registrados para este mes.\n"
         
         await update.message.reply_text(mensaje, parse_mode="Markdown", reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
         return MENU
     except ValueError:
-        await update.message.reply_text("Año inválido. Por favor, introduce un año válido (ej: 2023):")
+        await update.message.reply_text("Año inválido. Por favor, introduce un año válido (ej: 2023):\n")
         return INFORME_ANIO
     except Exception as e:
         logger.error(f"Error al generar informe mensual: {e}")
@@ -256,6 +253,7 @@ async def informe_anio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         return MENU
 
 
+async def deshacer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if 'ultimo_registro' not in context.user_data:
         await update.message.reply_text("No hay ningún registro reciente para deshacer.", reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
         return MENU
