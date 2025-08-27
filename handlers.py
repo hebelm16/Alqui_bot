@@ -12,7 +12,7 @@ from config import AUTHORIZED_USERS, COMMISSION_RATE
 logger = logging.getLogger(__name__)
 
 # === Estados de conversación ===
-MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC, INFORME_MES = range(6)
+MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC = range(5)
 
 # === Funciones de Handlers ===
 
@@ -26,8 +26,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         KeyboardButton("📥 Registrar Pago"),
         KeyboardButton("💸 Registrar Gasto")
     ], [
-        KeyboardButton("📊 Ver Resumen"),
-        KeyboardButton("📄 Generar Informe Mensual")
+        KeyboardButton("📊 Ver Resumen")
     ], [
         KeyboardButton("🗑️ Deshacer último registro")
     ]]
@@ -178,34 +177,6 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         logger.error(f"Error al generar resumen: {e}")
         await update.message.reply_text("❌ Hubo un error al generar el resumen.", reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
         return MENU
-
-
-async def informe_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    keyboard = [[KeyboardButton("❌ Cancelar")]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text("Para generar el informe, por favor, escribe el número del mes (1-12):", reply_markup=reply_markup)
-    return INFORME_MES
-
-async def informe_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    texto = update.message.text.strip()
-    if texto == "❌ Cancelar":
-        return await volver(update, context)
-    
-    try:
-        mes = int(texto)
-        if not (1 <= mes <= 12):
-            raise ValueError("Mes fuera de rango")
-        context.user_data['informe_mes'] = mes
-        
-        keyboard = [[KeyboardButton("❌ Cancelar")]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text("Ahora, escribe el año (ej: 2023):", reply_markup=reply_markup)
-        return INFORME_ANIO
-    except ValueError:
-        await update.message.reply_text("Mes inválido. Por favor, introduce un número entre 1 y 12:")
-        return INFORME_MES
-
-
 
 
 async def deshacer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

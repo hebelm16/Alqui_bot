@@ -1,7 +1,8 @@
 import os
 import psycopg2
 import logging
-from config import COMMISSION_RATE, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+from urllib.parse import urlparse
+from config import COMMISSION_RATE
 
 logger = logging.getLogger(__name__)
 
@@ -11,16 +12,17 @@ def get_db_connection():
         database_url = os.getenv("DATABASE_URL")
         if database_url:
             logger.info(f"Attempting to connect using DATABASE_URL: {database_url}")
-            conn = psycopg2.connect(database_url)
-        else:
-            logger.info(f"DATABASE_URL not found. Attempting to connect using individual parameters: host={DB_HOST}, port={DB_PORT}, dbname={DB_NAME}, user={DB_USER}")
+            url = urlparse(database_url)
             conn = psycopg2.connect(
-                host=DB_HOST,
-                port=DB_PORT,
-                database=DB_NAME,
-                user=DB_USER,
-                password=DB_PASSWORD
+                host=url.hostname,
+                port=url.port,
+                database=url.path[1:],
+                user=url.username,
+                password=url.password
             )
+        else:
+            logger.error("DATABASE_URL environment variable not set.")
+            raise ValueError("DATABASE_URL environment variable not set.")
         return conn
     except psycopg2.Error as e:
         logger.error(f"Error al conectar a la base de datos PostgreSQL: {e}")
