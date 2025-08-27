@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # === Configuración de Autenticación ===
 # Lista de IDs de usuarios de Telegram autorizados
