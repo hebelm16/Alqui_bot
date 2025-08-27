@@ -165,8 +165,8 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             for i, pago in enumerate(ultimos_pagos, 1):
                 # Escapar el nombre del inquilino para evitar problemas con MarkdownV2
                 nombre_escapado = escape_markdown(pago[1], version=2)
-                mensaje += f"{i}. {nombre_escapado}: RD${float(pago[2]):.2f} ({pago[0]})
-"
+                mensaje += f"{i}. {nombre_escapado}: RD${float(pago[2]):.2f} ({pago[0]})"
+
         else:
             mensaje += "No hay pagos registrados\n"
 
@@ -175,8 +175,7 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             for i, gasto in enumerate(ultimos_gastos, 1):
                 # Escapar la descripción del gasto para evitar problemas con MarkdownV2
                 descripcion_escapada = escape_markdown(gasto[1], version=2)
-                mensaje += f"{i}. {descripcion_escapada}: RD${float(gasto[2]):.2f} ({gasto[0]})
-"
+                mensaje += f"{i}. {descripcion_escapada}: RD${float(gasto[2]):.2f} ({gasto[0]})"
         else:
             mensaje += "No hay gastos registrados\n"
 
