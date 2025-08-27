@@ -267,19 +267,42 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'ultimos_pagos',
     mensaje += f"💸 *Total Gastos:* {total_gastos}\n"
     mensaje += f"🏦 *Monto Neto:* {monto_neto}\n\n"
 
+    date_formats_to_try = ['%d/%m/%Y %H:%M', '%Y-%m-%d', '%d/%m/%Y']
+
+    def parse_date_string(date_str):
+        for fmt in date_formats_to_try:
+            try:
+                return datetime.strptime(date_str, fmt)
+            except ValueError:
+                continue
+        return None # Return None if no format matches
+
     mensaje += "📥 *Pagos:*\n"
     if data[item_key_pagos]:
         for i, pago in enumerate(data[item_key_pagos], 1):
-            fecha, inquilino, monto = pago
-            mensaje += f"{i}\\. * {escape_markdown(inquilino, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({fecha.strftime('%d/%m/%Y')}\)\n"
+            fecha_str, inquilino, monto = pago
+            fecha_dt = parse_date_string(fecha_str)
+
+            if fecha_dt:
+                mensaje += f"{i}\\.* {escape_markdown(inquilino, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({fecha_dt.strftime('%d/%m/%Y')}\)\n"
+            else:
+                # Fallback if parsing fails, display raw string
+                mensaje += f"{i}\\.* {escape_markdown(inquilino, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({escape_markdown(fecha_str, version=2)}\)\n"
     else:
         mensaje += "No hay pagos registrados\\.\n"
 
-    mensaje += "\n💸 *Gastos:*\n"
+    mensaje += "\\n💸 *Gastos:*
+"
     if data[item_key_gastos]:
         for i, gasto in enumerate(data[item_key_gastos], 1):
-            fecha, descripcion, monto = gasto
-            mensaje += f"{i}\\. * {escape_markdown(descripcion, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({fecha.strftime('%d/%m/%Y')}\)\n"
+            fecha_str, descripcion, monto = gasto
+            fecha_dt = parse_date_string(fecha_str)
+
+            if fecha_dt:
+                mensaje += f"{i}\\.* {escape_markdown(descripcion, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({fecha_dt.strftime('%d/%m/%Y')}\)\n"
+            else:
+                # Fallback if parsing fails, display raw string
+                mensaje += f"{i}\\.* {escape_markdown(descripcion, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({escape_markdown(fecha_str, version=2)}\)\n"
     else:
         mensaje += "No hay gastos registrados\\.\n"
 
