@@ -147,7 +147,10 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         ultimos_pagos = resumen_data["ultimos_pagos"]
         ultimos_gastos = resumen_data["ultimos_gastos"]
         
-        comision_label = f"Total Comisión ({COMMISSION_RATE:.0%})"
+        from telegram.constants import ParseMode
+        from telegram.helpers import escape_markdown
+
+        comision_label = escape_markdown(f"Total Comisión ({COMMISSION_RATE:.0%})", version=2)
 
         mensaje = f"""📊 *RESUMEN DE ALQUILERES*
 
@@ -160,18 +163,24 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 """
         if ultimos_pagos:
             for i, pago in enumerate(ultimos_pagos, 1):
-                mensaje += f"{i}. {pago[1]}: RD${float(pago[2]):.2f} ({pago[0]})\n"
+                # Escapar el nombre del inquilino para evitar problemas con MarkdownV2
+                nombre_escapado = escape_markdown(pago[1], version=2)
+                mensaje += f"{i}. {nombre_escapado}: RD${float(pago[2]):.2f} ({pago[0]})
+"
         else:
             mensaje += "No hay pagos registrados\n"
 
         mensaje += "\n💸 *Últimos Gastos:\n"
         if ultimos_gastos:
             for i, gasto in enumerate(ultimos_gastos, 1):
-                mensaje += f"{i}. {gasto[1]}: RD${float(gasto[2]):.2f} ({gasto[0]})\n"
+                # Escapar la descripción del gasto para evitar problemas con MarkdownV2
+                descripcion_escapada = escape_markdown(gasto[1], version=2)
+                mensaje += f"{i}. {descripcion_escapada}: RD${float(gasto[2]):.2f} ({gasto[0]})
+"
         else:
             mensaje += "No hay gastos registrados\n"
 
-        await update.message.reply_text(mensaje, parse_mode="Markdown", reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
+        await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
         return MENU
     except Exception as e:
         logger.error(f"Error al generar resumen: {e}")
