@@ -150,14 +150,18 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         from telegram.constants import ParseMode
         from telegram.helpers import escape_markdown
 
-        comision_label = escape_markdown(f"Total Comisión ({COMMISSION_RATE:.0%})", version=2)
+        # Escapar los valores monetarios para el resumen inicial
+        total_ingresos_escapado = escape_markdown(f"RD${float(total_ingresos):.2f}", version=2)
+        total_comision_escapado = escape_markdown(f"RD${float(total_comision):.2f}", version=2)
+        total_gastos_escapado = escape_markdown(f"RD${float(total_gastos):.2f}", version=2)
+        monto_neto_escapado = escape_markdown(f"RD${float(monto_neto):.2f}", version=2)
 
         mensaje = f"""📊 *RESUMEN DE ALQUILERES*
 
-💰 *Total Ingresos:* RD${float(total_ingresos):.2f}
-💼 *{comision_label}:* RD${float(total_comision):.2f}
-💸 *Total Gastos:* RD${float(total_gastos):.2f}
-🏦 *Monto Neto:* RD${float(monto_neto):.2f}
+💰 *Total Ingresos:* {total_ingresos_escapado}
+💼 *{comision_label}:* {total_comision_escapado}
+💸 *Total Gastos:* {total_gastos_escapado}
+🏦 *Monto Neto:* {monto_neto_escapado}
 
 📥 *Últimos Pagos:*
 """
