@@ -289,10 +289,10 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'ultimos_pagos',
                 # Fallback if parsing fails, display raw string
                 mensaje += f"{i}\\.* {escape_markdown(inquilino, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({escape_markdown(fecha_str, version=2)}\)\n"
     else:
-        mensaje += "No hay pagos registrados\\.\n"
-
-    mensaje += "\\n💸 *Gastos:*
+        mensaje += "No hay pagos registrados\.
 "
+
+    mensaje += "\n💸 *Gastos:*\n"
     if data[item_key_gastos]:
         for i, gasto in enumerate(data[item_key_gastos], 1):
             fecha_str, descripcion, monto = gasto
