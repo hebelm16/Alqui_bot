@@ -185,11 +185,27 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
                         # Fallback to original string if parsing fails
                         fecha_obj = pago[0]
 
-                nombre_escapado = escape_markdown(pago[1], version=2)
-                monto_escapado = escape_markdown(f"RD${float(pago[2]):.2f}", version=2)
-                # Format only if it's a date object, otherwise use as is
-                fecha_escapada = escape_markdown(fecha_obj.strftime("%d/%m/%Y") if isinstance(fecha_obj, date) else str(fecha_obj), version=2)
-                mensaje += f"{i}. {nombre_escapado}: {monto_escapado} ({fecha_escapada})\n"
+                # --- INICIO DEL CÓDIGO CORRECTO ---
+
+                # 1. Obtenemos los datos y los convertimos a texto
+                nombre = str(pago[1])
+                monto_val = float(pago[2]) # Keep as float for formatting
+                fecha_obj = pago[0] # This is already handled to be date object or string
+
+                # Format monto and fecha
+                monto_str = f"{monto_val:.2f}"
+                fecha_str = fecha_obj.strftime("%d/%m/%Y") if isinstance(fecha_obj, date) else str(fecha_obj)
+
+                # 2. Escapamos CADA PARTE que viene de la base de datos
+                nombre_escapado = escape_markdown(nombre, version=2)
+                monto_escapado = escape_markdown(monto_str, version=2)
+                fecha_escapada = escape_markdown(fecha_str, version=2)
+
+                # 3. Construimos el mensaje escapando los caracteres de NUESTRA plantilla
+                mensaje += f"{i}\. {nombre_escapado}: RD\${monto_escapado} \({fecha_escapada}\)
+"
+
+                # --- FIN DEL CÓDIGO CORRECTO ---
 
         else:
             mensaje += "No hay pagos registrados\n"
@@ -215,11 +231,11 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
                 descripcion_escapada = escape_markdown(gasto[1], version=2)
                 monto_escapado = escape_markdown(f"RD${float(gasto[2]):.2f}", version=2)
                 fecha_escapada = escape_markdown(fecha_obj.strftime("%d/%m/%Y") if isinstance(fecha_obj, date) else str(fecha_obj), version=2)
-                mensaje += f"{i}. {descripcion_escapada}: {monto_escapado} ({fecha_escapada})\n"
+                mensaje += f"{i}. {descripcion_escapada}: RD${monto_escapado} ({fecha_escapada})\n"
         else:
             mensaje += "No hay gastos registrados\n"
 
-        await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
+        await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=ReplyKeyboardMarkup([["⬅️️ Volver al menú"]], resize_keyboard=True))
         return MENU
     except Exception as e:
         logger.error(f"Error al generar resumen: {e}")
