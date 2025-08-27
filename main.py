@@ -17,16 +17,17 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-async def post_init_with_db(application: Application):
-    """Función asíncrona para ejecutar después de la inicialización de la aplicación."""
-    await init_pool()
-    await inicializar_db()
-    logging.info("Pool de DB y tablas inicializados.")
-
-async def main_async():
+def main() -> None:
+    """Inicia el bot y configura el manejo del ciclo de vida."""
     if not BOT_TOKEN:
         logging.critical("ERROR: No se encontró el token del bot. Define la variable de entorno BOT_TOKEN.")
         exit(1)
+
+    async def post_init_with_db(application: Application):
+        """Función asíncrona para ejecutar después de la inicialización de la aplicación."""
+        await init_pool()
+        await inicializar_db()
+        logging.info("Pool de DB y tablas inicializados.")
 
     # Configurar la aplicación usando los hooks post_init y post_shutdown
     # para manejar el ciclo de vida de la conexión a la DB.
@@ -83,8 +84,8 @@ async def main_async():
 
     print("Bot iniciado correctamente! Presiona Ctrl+C para detener.")
     
-    # run_polling ahora maneja el ciclo de vida completo, incluyendo nuestras funciones de init/shutdown.
-    await app.run_polling()
+    # run_polling en un contexto síncrono maneja el loop de asyncio internamente.
+    app.run_polling()
 
 if __name__ == '__main__':
-    asyncio.run(main_async())
+    main()
