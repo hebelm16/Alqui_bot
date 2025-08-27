@@ -1,10 +1,12 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
 import logging
 from config import BOT_TOKEN
+from database import inicializar_db
 from handlers import (
     start, pago_inicio, pago_monto, pago_nombre, gasto_inicio, gasto_monto, 
     gasto_desc, ver_resumen, deshacer, volver, cancelar, error_handler, 
-    MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC
+    informe_inicio, informe_mes, informe_anio, 
+    MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC, INFORME_MES, INFORME_ANIO
 )
 
 # Configuración de logging
@@ -14,6 +16,7 @@ logging.basicConfig(
 )
 
 def main():
+    inicializar_db()
     if not BOT_TOKEN:
         logging.critical("ERROR: No se encontró el token del bot. Define la variable de entorno BOT_TOKEN.")
         exit(1)
@@ -28,13 +31,16 @@ def main():
                     MessageHandler(filters.Regex("^📥 Registrar Pago$"), pago_inicio),
                     MessageHandler(filters.Regex("^💸 Registrar Gasto$"), gasto_inicio),
                     MessageHandler(filters.Regex("^📊 Ver Resumen$"), ver_resumen),
+                    MessageHandler(filters.Regex("^📄 Generar Informe Mensual$"), informe_inicio),
                     MessageHandler(filters.Regex("^🗑️ Deshacer último registro$"), deshacer),
                     MessageHandler(filters.Regex("^⬅️ Volver al menú$"), volver),
                 ],
                 PAGO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_monto)],
                 PAGO_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_nombre)],
                 GASTO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_monto)],
-                GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_desc)]
+                GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_desc)],
+                INFORME_MES: [MessageHandler(filters.TEXT & ~filters.COMMAND, informe_mes)],
+                INFORME_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, informe_anio)]
             },
             fallbacks=[
                 CommandHandler("cancel", cancelar),

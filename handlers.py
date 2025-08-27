@@ -2,16 +2,16 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler
 import datetime
 import logging
-from sheets import (
-    sheet_pagos, sheet_gastos, sheet_resumen,
-    actualizar_resumen
+from database import (
+    registrar_pago, registrar_gasto, obtener_resumen,
+    deshacer_ultimo_pago, deshacer_ultimo_gasto
 )
 from config import AUTHORIZED_USERS, COMMISSION_RATE
 
 logger = logging.getLogger(__name__)
 
 # === Estados de conversación ===
-MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC = range(5)
+MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC, INFORME_MES, INFORME_ANIO = range(7)
 
 # === Funciones de Handlers ===
 
@@ -26,6 +26,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         KeyboardButton("💸 Registrar Gasto")
     ], [
         KeyboardButton("📊 Ver Resumen"),
+        KeyboardButton("📄 Generar Informe Mensual")
+    ], [
         KeyboardButton("🗑️ Deshacer último registro")
     ]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -67,9 +69,8 @@ async def pago_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
     
     try:
-        sheet_pagos.append_row([fecha, nombre, monto])
-        context.user_data['ultimo_registro'] = ('pago', len(sheet_pagos.get_all_values()))
-        await actualizar_resumen()
+        pago_id = registrar_pago(fecha, nombre, monto)
+        context.user_data['ultimo_registro'] = ('pago', pago_id)
         
         await update.message.reply_text(
             f"✅ Pago registrado correctamente:\n"
@@ -119,9 +120,8 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
     
     try:
-        sheet_gastos.append_row([fecha, descripcion, monto])
-        context.user_data['ultimo_registro'] = ('gasto', len(sheet_gastos.get_all_values()))
-        await actualizar_resumen()
+        gasto_id = registrar_gasto(fecha, descripcion, monto)
+        context.user_data['ultimo_registro'] = ('gasto', gasto_id)
         
         await update.message.reply_text(
             f"✅ Gasto registrado correctamente:\n"
@@ -138,27 +138,16 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
-        await actualizar_resumen()
-        datos_resumen = sheet_resumen.get_all_values()
+        resumen_data = obtener_resumen()
         
-        total_ingresos, total_comision, total_gastos, monto_neto = "0.00", "0.00", "0.00", "0.00"
+        total_ingresos = resumen_data["total_ingresos"]
+        total_comision = resumen_data["total_comision"]
+        total_gastos = resumen_data["total_gastos"]
+        monto_neto = resumen_data["monto_neto"]
+        ultimos_pagos = resumen_data["ultimos_pagos"]
+        ultimos_gastos = resumen_data["ultimos_gastos"]
+        
         comision_label = f"Total Comisión ({COMMISSION_RATE:.0%})"
-        
-        for fila in datos_resumen:
-            if len(fila) >= 2:
-                if fila[0].strip() == "Total Ingresos":
-                    total_ingresos = fila[1].replace("RD$", "").replace(",", "").strip()
-                elif comision_label in fila[0]:
-                    total_comision = fila[1].replace("RD$", "").replace(",", "").strip()
-                elif fila[0].strip() == "Total Gastos":
-                    total_gastos = fila[1].replace("RD$", "").replace(",", "").strip()
-                elif fila[0].strip() == "Monto Neto":
-                    monto_neto = fila[1].replace("RD$", "").replace(",", "").strip()
-
-        pagos_datos = sheet_pagos.get_all_values()[1:]
-        gastos_datos = sheet_gastos.get_all_values()[1:]
-        ultimos_pagos = pagos_datos[-3:][::-1]
-        ultimos_gastos = gastos_datos[-3:][::-1]
 
         mensaje = f"📊 *RESUMEN DE ALQUILERES*\n\n"
         mensaje += f"💰 *Total Ingresos:* RD${float(total_ingresos):.2f}\n"
@@ -192,20 +181,99 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         return MENU
 
 async def deshacer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    keyboard = [[KeyboardButton("❌ Cancelar")]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    await update.message.reply_text("Para generar el informe, por favor, escribe el número del mes (1-12):", reply_markup=reply_markup)
+    return INFORME_MES
+
+async def informe_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    texto = update.message.text.strip()
+    if texto == "❌ Cancelar":
+        return await volver(update, context)
+    
+    try:
+        mes = int(texto)
+        if not (1 <= mes <= 12):
+            raise ValueError("Mes fuera de rango")
+        context.user_data['informe_mes'] = mes
+        
+        keyboard = [[KeyboardButton("❌ Cancelar")]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text("Ahora, escribe el año (ej: 2023):", reply_markup=reply_markup)
+        return INFORME_ANIO
+    except ValueError:
+        await update.message.reply_text("Mes inválido. Por favor, introduce un número entre 1 y 12:")
+        return INFORME_MES
+
+async def informe_anio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    texto = update.message.text.strip()
+    if texto == "❌ Cancelar":
+        return await volver(update, context)
+    
+    try:
+        anio = int(texto)
+        if not (2000 <= anio <= datetime.datetime.now().year + 1): # Rango razonable de años
+            raise ValueError("Año fuera de rango")
+        context.user_data['informe_anio'] = anio
+        
+        mes = context.user_data['informe_mes']
+        
+        # Generar informe
+        informe_data = obtener_informe_mensual(mes, anio)
+        
+        mensaje = f"📊 *INFORME MENSUAL - {mes}/{anio}*\n\n"
+        mensaje += f"💰 *Total Ingresos:* RD${informe_data['total_ingresos']:.2f}\n"
+        mensaje += f"💼 *Total Comisión ({COMMISSION_RATE:.0%}):* RD${informe_data['total_comision']:.2f}\n"
+        mensaje += f"💸 *Total Gastos:* RD${informe_data['total_gastos']:.2f}\n"
+        mensaje += f"🏦 *Monto Neto:* RD${informe_data['monto_neto']:.2f}\n\n"
+
+        mensaje += "📥 *Pagos del Mes:*\n"
+        if informe_data['pagos_mes']:
+            for i, pago in enumerate(informe_data['pagos_mes'], 1):
+                mensaje += f"{i}. {pago[1]}: RD${pago[2]:.2f} ({pago[0].split(' ')[0]})
+" # Solo fecha
+        else:
+            mensaje += "No hay pagos registrados para este mes.\n"
+
+        mensaje += "\n💸 *Gastos del Mes:*\n"
+        if informe_data['gastos_mes']:
+            for i, gasto in enumerate(informe_data['gastos_mes'], 1):
+                mensaje += f"{i}. {gasto[1]}: RD${gasto[2]:.2f} ({gasto[0].split(' ')[0]})
+" # Solo fecha
+        else:
+            mensaje += "No hay gastos registrados para este mes.\n"
+        
+        await update.message.reply_text(mensaje, parse_mode="Markdown", reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
+        return MENU
+    except ValueError:
+        await update.message.reply_text("Año inválido. Por favor, introduce un año válido (ej: 2023):")
+        return INFORME_ANIO
+    except Exception as e:
+        logger.error(f"Error al generar informe mensual: {e}")
+        await update.message.reply_text("❌ Hubo un error al generar el informe mensual.", reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
+        return MENU
+
+
     if 'ultimo_registro' not in context.user_data:
         await update.message.reply_text("No hay ningún registro reciente para deshacer.", reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
         return MENU
     
     try:
-        tipo, fila = context.user_data['ultimo_registro']
-        sheet = sheet_pagos if tipo == 'pago' else sheet_gastos
-        datos = sheet.row_values(fila)
-        sheet.delete_rows(fila)
-        await actualizar_resumen()
+        tipo, registro_id = context.user_data['ultimo_registro']
         
-        label_tipo = "Pago" if tipo == 'pago' else "Gasto"
+        if tipo == 'pago':
+            deshacer_ultimo_pago(registro_id)
+            label_tipo = "Pago"
+            # No hay forma de obtener los datos del pago eliminado directamente desde la DB sin una consulta adicional
+            # Por ahora, solo confirmamos la eliminación.
+            mensaje_confirmacion = f"❌ {label_tipo} eliminado."
+        else: # tipo == 'gasto'
+            deshacer_ultimo_gasto(registro_id)
+            label_tipo = "Gasto"
+            mensaje_confirmacion = f"❌ {label_tipo} eliminado."
+        
         await update.message.reply_text(
-            f"❌ {label_tipo} eliminado:\n{datos[1]}: RD${float(datos[2]):.2f}", 
+            mensaje_confirmacion, 
             reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True)
         )
         del context.user_data['ultimo_registro']
