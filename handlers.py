@@ -213,25 +213,26 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         mensaje += "\n💸 *Últimos Gastos:\n"
         if ultimos_gastos:
             for i, gasto in enumerate(ultimos_gastos, 1):
-                # Ensure fecha is a date object before formatting
-                fecha_obj = gasto[0]
-                if isinstance(fecha_obj, str):
-                    try:
-                        # Attempt to parse from "DD/MM/YYYY" or "DD/MM/YYYY HH:MM"
-                        if len(fecha_obj) == 10: # "DD/MM/YYYY"
-                            fecha_obj = datetime.strptime(fecha_obj, "%d/%m/%Y").date()
-                        elif len(fecha_obj) == 16: # "DD/MM/YYYY HH:MM"
-                            fecha_obj = datetime.strptime(fecha_obj, "%d/%m/%Y %H:%M").date()
-                        else:
-                            logger.warning(f"Unexpected date string format for gasto: {fecha_obj}")
-                    except ValueError:
-                        logger.error(f"Could not parse date string for gasto: {fecha_obj}")
-                        fecha_obj = gasto[0]
+                # --- INICIO DEL CÓDIGO CORRECTO ---
 
-                descripcion_escapada = escape_markdown(gasto[1], version=2)
-                monto_escapado = escape_markdown(f"RD${float(gasto[2]):.2f}", version=2)
-                fecha_escapada = escape_markdown(fecha_obj.strftime("%d/%m/%Y") if isinstance(fecha_obj, date) else str(fecha_obj), version=2)
-                mensaje += f"{i}. {descripcion_escapada}: RD${monto_escapado} ({fecha_escapada})\n"
+                # 1. Obtenemos los datos y los convertimos a texto
+                descripcion = str(gasto[1])
+                monto_val = float(gasto[2]) # Keep as float for formatting
+                fecha_obj = gasto[0] # This is already handled to be date object or string
+
+                # Format monto and fecha
+                monto_str = f"{monto_val:.2f}"
+                fecha_str = fecha_obj.strftime("%d/%m/%Y") if isinstance(fecha_obj, date) else str(fecha_obj)
+
+                # 2. Escapamos CADA PARTE que viene de la base de datos
+                descripcion_escapada = escape_markdown(descripcion, version=2)
+                monto_escapado = escape_markdown(monto_str, version=2)
+                fecha_escapada = escape_markdown(fecha_str, version=2)
+
+                # 3. Construimos el mensaje escapando los caracteres de NUESTRA plantilla
+                mensaje += f"{i}\. {descripcion_escapada}: RD\${monto_escapado} \({fecha_escapada}\)\n"
+
+                # --- FIN DEL CÓDIGO CORRECTO ---
         else:
             mensaje += "No hay gastos registrados\n"
 
