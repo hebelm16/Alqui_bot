@@ -202,7 +202,14 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
                 fecha_escapada = escape_markdown(fecha_str, version=2)
 
                 # 3. Construimos el mensaje escapando los caracteres de NUESTRA plantilla
-                mensaje += f"{i}\. {nombre_escapado}: RD\${monto_escapado} \({fecha_escapada}\)
+                fecha_escapada = escape_markdown(fecha_str, version=2)
+
+                # 3. Construimos el mensaje escapando los caracteres de NUESTRA plantilla
+                mensaje += f"{i}\. {nombre_escapado}: RD\${monto_escapado} \({fecha_escapada}\)"
+                # --- FIN DEL CÓDIGO CORRECTO ---
+
+        else:
+            mensaje += "No hay pagos registrados\n"
 "
 
                 # --- FIN DEL CÓDIGO CORRECTO ---
