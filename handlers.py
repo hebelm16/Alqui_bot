@@ -15,14 +15,14 @@ logger = logging.getLogger(__name__)
 # === Estados de conversación ===
 MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC, INFORME_MES, INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR = range(9)
 
-# === Funciones de Ayudante ===
-
+# === Helper ===
 def format_currency(value: float) -> str:
-    """Formatea un valor flotante a una cadena de moneda."""
     return f"RD${value:,.2f}"
 
+def md(text: str) -> str:
+    return escape_markdown(str(text), version=2)
+
 def create_main_menu_keyboard() -> ReplyKeyboardMarkup:
-    """Crea el teclado del menú principal."""
     keyboard = [
         [KeyboardButton("📥 Registrar Pago"), KeyboardButton("💸 Registrar Gasto")],
         [KeyboardButton("📊 Ver Resumen"), KeyboardButton("📈 Generar Informe")],
@@ -30,8 +30,7 @@ def create_main_menu_keyboard() -> ReplyKeyboardMarkup:
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# === Funciones de Handlers ===
-
+# === Handlers ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.effective_user.id
     if user_id not in AUTHORIZED_USERS:
@@ -43,8 +42,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return MENU
 
 async def pago_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    keyboard = [[KeyboardButton("❌ Cancelar")]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    reply_markup = ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
     await update.message.reply_text("Escribe el monto del pago recibido (ej: 3000):", reply_markup=reply_markup)
     return PAGO_MONTO
 
@@ -56,8 +54,7 @@ async def pago_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         monto = float(texto.replace(",", "").replace("RD$", "").strip())
         context.user_data['pago_monto'] = monto
-        keyboard = [[KeyboardButton("❌ Cancelar")]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        reply_markup = ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
         await update.message.reply_text(f"Monto registrado: {format_currency(monto)}\nAhora escribe el nombre del inquilino:", reply_markup=reply_markup)
         return PAGO_NOMBRE
     except ValueError:
@@ -76,20 +73,20 @@ async def pago_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         await registrar_pago(fecha, nombre, monto)
         await update.message.reply_text(
             f"✅ Pago registrado correctamente:\n"
-            f"📅 Fecha: {fecha.strftime("%d/%m/%Y")}\n"
-            f"👤 Inquilino: {nombre}\n"
-            f"💵 Monto: {format_currency(monto)}",
+            f"📅 Fecha: {fecha.strftime('%d/%m/%Y')}\n"
+            f"👤 Inquilino: {md(nombre)}\n"
+            f"💵 Monto: {md(format_currency(monto))}",
+            parse_mode=ParseMode.MARKDOWN_V2,
             reply_markup=create_main_menu_keyboard()
         )
         return MENU
     except Exception as e:
-        logger.error(f"Error al registrar pago: {e}")
+        logger.error("Error al registrar pago", exc_info=True)
         await update.message.reply_text("❌ Hubo un error al registrar el pago.", reply_markup=create_main_menu_keyboard())
         return MENU
 
 async def gasto_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    keyboard = [[KeyboardButton("❌ Cancelar")]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    reply_markup = ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
     await update.message.reply_text("Escribe el monto del gasto (ej: 500):", reply_markup=reply_markup)
     return GASTO_MONTO
 
@@ -101,8 +98,7 @@ async def gasto_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     try:
         monto = float(texto.replace(",", "").replace("RD$", "").strip())
         context.user_data['gasto_monto'] = monto
-        keyboard = [[KeyboardButton("❌ Cancelar")]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        reply_markup = ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
         await update.message.reply_text(f"Monto registrado: {format_currency(monto)}\nAhora escribe la descripción del gasto:", reply_markup=reply_markup)
         return GASTO_DESC
     except ValueError:
@@ -121,14 +117,15 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await registrar_gasto(fecha, descripcion, monto)
         await update.message.reply_text(
             f"✅ Gasto registrado correctamente:\n"
-            f"📅 Fecha: {fecha.strftime("%d/%m/%Y")}\n"
-            f"📝 Descripción: {descripcion}\n"
-            f"💸 Monto: {format_currency(monto)}",
+            f"📅 Fecha: {fecha.strftime('%d/%m/%Y')}\n"
+            f"📝 Descripción: {md(descripcion)}\n"
+            f"💸 Monto: {md(format_currency(monto))}",
+            parse_mode=ParseMode.MARKDOWN_V2,
             reply_markup=create_main_menu_keyboard()
         )
         return MENU
     except Exception as e:
-        logger.error(f"Error al registrar gasto: {e}")
+        logger.error("Error al registrar gasto", exc_info=True)
         await update.message.reply_text("❌ Hubo un error al registrar el gasto.", reply_markup=create_main_menu_keyboard())
         return MENU
 
@@ -139,7 +136,7 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())
         return MENU
     except Exception as e:
-        logger.error(f"Error al generar resumen: {e}")
+        logger.error("Error al generar resumen", exc_info=True)
         await update.message.reply_text("❌ Hubo un error al generar el resumen.", reply_markup=create_main_menu_keyboard())
         return MENU
 
@@ -198,7 +195,7 @@ async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())
         return MENU
     except Exception as e:
-        logger.error(f"Error al generar informe mensual: {e}")
+        logger.error("Error al generar informe mensual", exc_info=True)
         await update.message.reply_text("❌ Hubo un error al generar el informe.", reply_markup=create_main_menu_keyboard())
         return MENU
 
@@ -215,13 +212,13 @@ async def deshacer_pago_handler(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         inquilino, monto = await deshacer_ultimo_pago()
         if inquilino:
-            mensaje = f"✅ Último pago de *{escape_markdown(inquilino, version=2)}* por *{escape_markdown(format_currency(monto), version=2)}* ha sido eliminado."
+            mensaje = f"✅ Último pago de *{md(inquilino)}* por *{md(format_currency(monto))}* ha sido eliminado."
         else:
             mensaje = "No hay pagos para deshacer."
         await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())
         return MENU
     except Exception as e:
-        logger.error(f"Error al deshacer pago: {e}")
+        logger.error("Error al deshacer pago", exc_info=True)
         await update.message.reply_text("❌ Hubo un error al deshacer el pago.", reply_markup=create_main_menu_keyboard())
         return MENU
 
@@ -229,13 +226,13 @@ async def deshacer_gasto_handler(update: Update, context: ContextTypes.DEFAULT_T
     try:
         descripcion, monto = await deshacer_ultimo_gasto()
         if descripcion:
-            mensaje = f"✅ Último gasto \(*{escape_markdown(descripcion, version=2)}*\) por *{escape_markdown(format_currency(monto), version=2)}* ha sido eliminado."
+            mensaje = f"✅ Último gasto *{md(descripcion)}* por *{md(format_currency(monto))}* ha sido eliminado."
         else:
             mensaje = "No hay gastos para deshacer."
         await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())
         return MENU
     except Exception as e:
-        logger.error(f"Error al deshacer gasto: {e}")
+        logger.error("Error al deshacer gasto", exc_info=True)
         await update.message.reply_text("❌ Hubo un error al deshacer el gasto.", reply_markup=create_main_menu_keyboard())
         return MENU
 
@@ -244,24 +241,22 @@ async def volver_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     return MENU
 
 async def volver_menu_principal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Vuelve al menú principal sin el mensaje de bienvenida."""
     reply_markup = create_main_menu_keyboard()
     await update.message.reply_text("Selecciona una opción:", reply_markup=reply_markup)
     return MENU
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error(f"Error: {context.error} - causado por {update}")
+    logger.error(f"Error: {context.error} - causado por {update}", exc_info=True)
     if update and update.effective_message:
         await update.message.reply_text("❌ Ocurrió un error inesperado.", reply_markup=create_main_menu_keyboard())
 
 def format_report(title: str, data: dict, item_key_pagos: str = 'ultimos_pagos', item_key_gastos: str = 'ultimos_gastos') -> str:
-    """Formatea los datos de un informe en un mensaje de texto."""
-    total_ingresos = escape_markdown(format_currency(data["total_ingresos"]), version=2)
-    total_comision = escape_markdown(format_currency(data["total_comision"]), version=2)
-    total_gastos = escape_markdown(format_currency(data["total_gastos"]), version=2)
-    monto_neto = escape_markdown(format_currency(data["monto_neto"]), version=2)
+    total_ingresos = md(format_currency(data["total_ingresos"]))
+    total_comision = md(format_currency(data["total_comision"]))
+    total_gastos = md(format_currency(data["total_gastos"]))
+    monto_neto = md(format_currency(data["monto_neto"]))
 
-    mensaje = f"📊 *{escape_markdown(title, version=2)}*\n\n"
+    mensaje = f"📊 *{md(title)}*\n\n"
     mensaje += f"💰 *Total Ingresos:* {total_ingresos}\n"
     mensaje += f"💼 *Comisión Total:* {total_comision}\n"
     mensaje += f"💸 *Total Gastos:* {total_gastos}\n"
@@ -275,45 +270,30 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'ultimos_pagos',
                 return datetime.strptime(date_str, fmt)
             except ValueError:
                 continue
-        return None # Return None if no format matches
+        return None
 
     mensaje += "📥 *Pagos:*\n"
     if data[item_key_pagos]:
         for i, pago in enumerate(data[item_key_pagos], 1):
             fecha_obj, inquilino, monto = pago
-            # If fecha_obj is already a date/datetime object, use it directly
-            if isinstance(fecha_obj, (date, datetime)):
-                fecha_dt = fecha_obj
-            else:
-                # Otherwise, try to parse it as a string
-                fecha_dt = parse_date_string(fecha_obj)
-
+            fecha_dt = fecha_obj if isinstance(fecha_obj, (date, datetime)) else parse_date_string(fecha_obj)
             if fecha_dt:
-                mensaje += f"{i}\\.* {escape_markdown(inquilino, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({fecha_dt.strftime('%d/%m/%Y')}\)\n"
+                mensaje += f"{i}\. {md(inquilino)}: {md(format_currency(monto))} ({fecha_dt.strftime('%d/%m/%Y')})\n"
             else:
-                # Fallback if parsing fails, display raw string
-                mensaje += f"{i}\\.* {escape_markdown(inquilino, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({escape_markdown(str(fecha_obj), version=2)}\)\n"
+                mensaje += f"{i}\. {md(inquilino)}: {md(format_currency(monto))} ({md(str(fecha_obj))})\n"
     else:
         mensaje += "No hay pagos registrados.\n"
-"
 
     mensaje += "\n💸 *Gastos:*\n"
     if data[item_key_gastos]:
         for i, gasto in enumerate(data[item_key_gastos], 1):
             fecha_obj, descripcion, monto = gasto
-            # If fecha_obj is already a date/datetime object, use it directly
-            if isinstance(fecha_obj, (date, datetime)):
-                fecha_dt = fecha_obj
-            else:
-                # Otherwise, try to parse it as a string
-                fecha_dt = parse_date_string(fecha_obj)
-
+            fecha_dt = fecha_obj if isinstance(fecha_obj, (date, datetime)) else parse_date_string(fecha_obj)
             if fecha_dt:
-                mensaje += f"{i}\.* {escape_markdown(descripcion, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({fecha_dt.strftime('%d/%m/%Y')}\)\n"
+                mensaje += f"{i}\. {md(descripcion)}: {md(format_currency(monto))} ({fecha_dt.strftime('%d/%m/%Y')})\n"
             else:
-                # Fallback if parsing fails, display raw string
-                mensaje += f"{i}\.* {escape_markdown(descripcion, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({escape_markdown(str(fecha_obj), version=2)}\)\n"
+                mensaje += f"{i}\. {md(descripcion)}: {md(format_currency(monto))} ({md(str(fecha_obj))})\n"
     else:
-        mensaje += "No hay gastos registrados\.\n"
+        mensaje += "No hay gastos registrados.\n"
 
     return mensaje
