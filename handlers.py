@@ -252,7 +252,7 @@ async def volver_menu_principal(update: Update, context: ContextTypes.DEFAULT_TY
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(f"Error: {context.error} - causado por {update}")
     if update and update.effective_message:
-        await update.effective_message.reply_text("❌ Ocurrió un error inesperado.", reply_markup=create_main_menu_keyboard())
+        await update.message.reply_text("❌ Ocurrió un error inesperado.", reply_markup=create_main_menu_keyboard())
 
 def format_report(title: str, data: dict, item_key_pagos: str = 'ultimos_pagos', item_key_gastos: str = 'ultimos_gastos') -> str:
     """Formatea los datos de un informe en un mensaje de texto."""
@@ -271,15 +271,15 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'ultimos_pagos',
     if data[item_key_pagos]:
         for i, pago in enumerate(data[item_key_pagos], 1):
             fecha, inquilino, monto = pago
-            mensaje += f"{i}\\.* {escape_markdown(inquilino, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({fecha.strftime('%d/%m/%Y')}\)\n"
+            mensaje += f"{i}\\. * {escape_markdown(inquilino, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({fecha.strftime('%d/%m/%Y')}\)\n"
     else:
         mensaje += "No hay pagos registrados\\.\n"
 
-    mensaje += "\\n💸 *Gastos:*\n"
+    mensaje += "\n💸 *Gastos:*\n"
     if data[item_key_gastos]:
         for i, gasto in enumerate(data[item_key_gastos], 1):
             fecha, descripcion, monto = gasto
-            mensaje += f"{i}\\.* {escape_markdown(descripcion, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({fecha.strftime('%d/%m/%Y')}\)\n"
+            mensaje += f"{i}\\. * {escape_markdown(descripcion, version=2)}: {escape_markdown(format_currency(monto), version=2)} \({fecha.strftime('%d/%m/%Y')}\)\n"
     else:
         mensaje += "No hay gastos registrados\\.\n"
 
