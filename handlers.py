@@ -139,6 +139,10 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         resumen_data = obtener_resumen()
+    except Exception as e:
+        logger.error(f"Error al obtener resumen: {e}")
+        await update.message.reply_text("❌ Hubo un error al obtener el resumen.", reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
+        return MENU
         
         total_ingresos = resumen_data["total_ingresos"]
         total_comision = resumen_data["total_comision"]
@@ -177,7 +181,6 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
                             fecha_obj = datetime.strptime(fecha_obj, "%d/%m/%Y").date()
                         elif len(fecha_obj) == 16: # "DD/MM/YYYY HH:MM"
                             fecha_obj = datetime.strptime(fecha_obj, "%d/%m/%Y %H:%M").date()
-                        else:
                             # Fallback if format is unexpected, use as is (might cause error later)
                             logger.warning(f"Unexpected date string format for pago: {fecha_obj}")
                     except ValueError:
@@ -207,12 +210,9 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
                 # 3. Construimos el mensaje escapando los caracteres de NUESTRA plantilla
                 mensaje += f"{i}\. {nombre_escapado}: RD\${monto_escapado} \({fecha_escapada}\)"
                 # --- FIN DEL CÓDIGO CORRECTO ---
-
-        else:
             mensaje += "No hay pagos registrados\n"
-"
 
-                # --- FIN DEL CÓDIGO CORRECTO ---
+# --- FIN DEL CÓDIGO CORRECTO ---
 
         else:
             mensaje += "No hay pagos registrados\n"
