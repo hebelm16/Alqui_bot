@@ -149,14 +149,15 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         
         comision_label = f"Total Comisión ({COMMISSION_RATE:.0%})"
 
-        mensaje = f"📊 *RESUMEN DE ALQUILERES*\n\n"
-        mensaje += f"💰 *Total Ingresos:* RD${float(total_ingresos):.2f}\n"
-        mensaje += f"💼 *{comision_label}:* RD${float(total_comision):.2f}\n"
-        mensaje += f"💸 *Total Gastos:* RD${float(total_gastos):.2f}\n"
-        mensaje += f"🏦 *Monto Neto:* RD${float(monto_neto):.2f}\n\n"
+        mensaje = f"""📊 *RESUMEN DE ALQUILERES*
 
-        mensaje += "📥 *Últimos Pagos:*
-"
+💰 *Total Ingresos:* RD${float(total_ingresos):.2f}
+💼 *{comision_label}:* RD${float(total_comision):.2f}
+💸 *Total Gastos:* RD${float(total_gastos):.2f}
+🏦 *Monto Neto:* RD${float(monto_neto):.2f}
+
+📥 *Últimos Pagos:*
+"""
         if ultimos_pagos:
             for i, pago in enumerate(ultimos_pagos, 1):
                 mensaje += f"{i}. {pago[1]}: RD${float(pago[2]):.2f} ({pago[0]})
@@ -179,6 +180,7 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         logger.error(f"Error al generar resumen: {e}")
         await update.message.reply_text("❌ Hubo un error al generar el resumen.", reply_markup=ReplyKeyboardMarkup([["⬅️ Volver al menú"]], resize_keyboard=True))
         return MENU
+
 
 async def deshacer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [[KeyboardButton("❌ Cancelar")]]
