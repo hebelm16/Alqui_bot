@@ -165,8 +165,7 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         else:
             mensaje += "No hay pagos registrados\n"
 
-        mensaje += "\n💸 *Últimos Gastos:*
-"
+        mensaje += "\n💸 *Últimos Gastos:\n"
         if ultimos_gastos:
             for i, gasto in enumerate(ultimos_gastos, 1):
                 mensaje += f"{i}. {gasto[1]}: RD${float(gasto[2]):.2f} ({gasto[0]})".replace('\n', '\\n') + "\n"
