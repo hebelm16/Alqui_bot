@@ -192,7 +192,7 @@ async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_
         report_data = await obtener_informe_mensual(mes, anio)
         title = f"Informe Mensual - {mes}/{anio}"
         mensaje = format_report(title, report_data, item_key_pagos='pagos_mes', item_key_gastos='gastos_mes')
-        await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())
+        await update.message.reply_text(mensaje, reply_markup=create_main_menu_keyboard())
         return MENU
     except Exception as e:
         logger.error("Error al generar informe mensual", exc_info=True)
