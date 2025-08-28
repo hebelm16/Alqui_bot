@@ -265,7 +265,7 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'pagos_mes', ite
     if pagos:
         mensaje += "*📥 Pagos del Mes:*\n"
         for i, pago in enumerate(pagos, 1):
-            fecha_dt = pago[0] # Assuming pago[0] is a date object
+            fecha_dt = datetime.strptime(pago[0], '%Y-%m-%d').date() # Assuming pago[0] is a date object
             inquilino = pago[1]
             monto = pago[2]
             mensaje += f"{i}\\. {md(inquilino)}: {md(format_currency(monto))} ({fecha_dt.strftime('%d/%m/%Y')})\n"
@@ -278,7 +278,7 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'pagos_mes', ite
     if gastos:
         mensaje += "*💸 Gastos del Mes:*\n"
         for i, gasto in enumerate(gastos, 1):
-            fecha_dt = gasto[0] # Assuming gasto[0] is a date object
+            fecha_dt = datetime.strptime(gasto[0], '%Y-%m-%d').date() # Assuming gasto[0] is a date object
             descripcion = gasto[1]
             monto = gasto[2]
             mensaje += f"{i}\\. {md(descripcion)}: {md(format_currency(monto))} ({fecha_dt.strftime('%d/%m/%Y')})\n"
@@ -286,3 +286,4 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'pagos_mes', ite
         mensaje += "*💸 Gastos del Mes:* No hay gastos registrados para este período\.\n"
 
     return mensaje
+
