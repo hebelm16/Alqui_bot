@@ -278,7 +278,7 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'pagos_mes', ite
     if gastos:
         mensaje += "*💸 Gastos del Mes:*\n"
         for i, gasto in enumerate(gastos, 1):
-            fecha_dt = datetime.strptime(gasto[0], '%Y-%m-%d').date() # Assuming gasto[0] is a date object
+            fecha_dt = datetime.strptime(gasto[0], '%d/%m/%Y %H:%M').date() # Assuming gasto[0] is a date object
             descripcion = gasto[1]
             monto = gasto[2]
             mensaje += f"{i}\\. {md(descripcion)}: {md(format_currency(monto))} ({fecha_dt.strftime('%d/%m/%Y')})\n"
