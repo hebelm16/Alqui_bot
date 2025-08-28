@@ -327,7 +327,7 @@ def format_summary(data: dict) -> str:
     if ultimos_pagos:
         mensaje += "Últimos Pagos:\n"
         for i, pago in enumerate(ultimos_pagos, 1):
-            fecha_dt = pago[0] # Assuming pago[0] is a date object
+            fecha_dt = datetime.strptime(pago[0], '%d/%m/%Y %H:%M').date()
             inquilino = pago[1]
             monto = pago[2]
             mensaje += f"{i}. {inquilino}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
@@ -340,7 +340,7 @@ def format_summary(data: dict) -> str:
     if ultimos_gastos:
         mensaje += "Últimos Gastos:\n"
         for i, gasto in enumerate(ultimos_gastos, 1):
-            fecha_dt = gasto[0] # Assuming gasto[0] is a date object
+            fecha_dt = datetime.strptime(gasto[0], '%d/%m/%Y %H:%M').date()
             descripcion = gasto[1]
             monto = gasto[2]
             mensaje += f"{i}. {descripcion}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
