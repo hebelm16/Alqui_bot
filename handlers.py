@@ -192,7 +192,7 @@ async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_
         report_data = await obtener_informe_mensual(mes, anio)
         title = f"Informe Mensual - {mes}/{anio}"
         mensaje = format_report(title, report_data, item_key_pagos='pagos_mes', item_key_gastos='gastos_mes')
-        await update.message.reply_text(mensaje, reply_markup=create_main_menu_keyboard())
+        await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())
         return MENU
     except Exception as e:
         logger.error("Error al generar informe mensual", exc_info=True)
@@ -250,5 +250,39 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update and update.effective_message:
         await update.message.reply_text("❌ Ocurrió un error inesperado.", reply_markup=create_main_menu_keyboard())
 
-def format_report(title: str, data: dict, item_key_pagos: str = 'ultimos_pagos', item_key_gastos: str = 'ultimos_gastos') -> str:
-    return str(data)
+def format_report(title: str, data: dict, item_key_pagos: str = 'pagos_mes', item_key_gastos: str = 'gastos_mes') -> str:
+    mensaje = f"*{md(title)}*\n\n"
+
+    # Resumen General
+    mensaje += "*📊 Resumen General:*\n"
+    mensaje += f"📥 *Ingresos Totales:* {md(format_currency(data['total_ingresos']))}\n"
+    mensaje += f"💸 *Gastos Totales:* {md(format_currency(data['total_gastos']))}\n"
+    mensaje += f"💰 *Comisión:* {md(format_currency(data['total_comision']))}\n"
+    mensaje += f"💵 *Monto Neto:* {md(format_currency(data['monto_neto']))}\n\n"
+
+    # Pagos del Mes
+    pagos = data.get(item_key_pagos, [])
+    if pagos:
+        mensaje += "*📥 Pagos del Mes:*\n"
+        for i, pago in enumerate(pagos, 1):
+            fecha_dt = pago[0] # Assuming pago[0] is a date object
+            inquilino = pago[1]
+            monto = pago[2]
+            mensaje += f"{i}\\. {md(inquilino)}: {md(format_currency(monto))} ({fecha_dt.strftime('%d/%m/%Y')})\n"
+    else:
+        mensaje += "*📥 Pagos del Mes:* No hay pagos registrados para este período\.\n"
+    mensaje += "\n"
+
+    # Gastos del Mes
+    gastos = data.get(item_key_gastos, [])
+    if gastos:
+        mensaje += "*💸 Gastos del Mes:*\n"
+        for i, gasto in enumerate(gastos, 1):
+            fecha_dt = gasto[0] # Assuming gasto[0] is a date object
+            descripcion = gasto[1]
+            monto = gasto[2]
+            mensaje += f"{i}\\. {md(descripcion)}: {md(format_currency(monto))} ({fecha_dt.strftime('%d/%m/%Y')})\n"
+    else:
+        mensaje += "*💸 Gastos del Mes:* No hay gastos registrados para este período\.\n"
+
+    return mensaje
