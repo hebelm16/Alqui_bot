@@ -1,4 +1,4 @@
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile
 from telegram.ext import ContextTypes, ConversationHandler
 from datetime import date, datetime
 import logging
@@ -9,6 +9,8 @@ from database import (
     deshacer_ultimo_pago, deshacer_ultimo_gasto
 )
 from config import AUTHORIZED_USERS
+import os
+import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -132,8 +134,21 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         resumen_data = await obtener_resumen()
-        mensaje = str(resumen_data) # Convert dictionary to string for raw display
-        await update.message.reply_text(mensaje, reply_markup=create_main_menu_keyboard()) # Removed parse_mode
+        mensaje = format_summary(resumen_data)
+
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8', suffix='.txt') as temp_file:
+            temp_file.write(mensaje)
+            temp_file_path = temp_file.name
+
+        # Send the file
+        with open(temp_file_path, 'rb') as f:
+            await update.message.reply_document(document=InputFile(f, filename='resumen_general.txt'),
+                                                caption='Aquí está tu resumen general.')
+
+        # Clean up: delete the temporary file
+        os.remove(temp_file_path)
+
         return MENU
     except Exception as e:
         logger.error("Error al generar resumen", exc_info=True)
@@ -192,7 +207,20 @@ async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_
         report_data = await obtener_informe_mensual(mes, anio)
         title = f"Informe Mensual - {mes}/{anio}"
         mensaje = format_report(title, report_data, item_key_pagos='pagos_mes', item_key_gastos='gastos_mes')
-        await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())
+
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8', suffix='.txt') as temp_file:
+            temp_file.write(mensaje)
+            temp_file_path = temp_file.name
+
+        # Send the file
+        with open(temp_file_path, 'rb') as f:
+            await update.message.reply_document(document=InputFile(f, filename=f'informe_mensual_{mes}_{anio}.txt'),
+                                                caption='Aquí está tu informe mensual.')
+
+        # Clean up: delete the temporary file
+        os.remove(temp_file_path)
+
         return MENU
     except Exception as e:
         logger.error("Error al generar informe mensual", exc_info=True)
@@ -251,39 +279,73 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("❌ Ocurrió un error inesperado.", reply_markup=create_main_menu_keyboard())
 
 def format_report(title: str, data: dict, item_key_pagos: str = 'pagos_mes', item_key_gastos: str = 'gastos_mes') -> str:
-    mensaje = f"*{md(title)}*\n\n"
+    mensaje = f"{title}\n\n"
 
     # Resumen General
-    mensaje += "*📊 Resumen General:*\n"
-    mensaje += f"📥 *Ingresos Totales:* {md(format_currency(data['total_ingresos']))}\n"
-    mensaje += f"💸 *Gastos Totales:* {md(format_currency(data['total_gastos']))}\n"
-    mensaje += f"💰 *Comisión:* {md(format_currency(data['total_comision']))}\n"
-    mensaje += f"💵 *Monto Neto:* {md(format_currency(data['monto_neto']))}\n\n"
+    mensaje += "Resumen General:\n"
+    mensaje += f"Ingresos Totales: {format_currency(data['total_ingresos'])}\n"
+    mensaje += f"Gastos Totales: {format_currency(data['total_gastos'])}\n"
+    mensaje += f"Comisión: {format_currency(data['total_comision'])}\n"
+    mensaje += f"Monto Neto: {format_currency(data['monto_neto'])}\n\n"
 
     # Pagos del Mes
     pagos = data.get(item_key_pagos, [])
     if pagos:
-        mensaje += "*📥 Pagos del Mes:*\n"
+        mensaje += "Pagos del Mes:\n"
         for i, pago in enumerate(pagos, 1):
-            fecha_dt = datetime.strptime(pago[0], '%d/%m/%Y %H:%M').date() # Assuming pago[0] is a date object
+            fecha_dt = datetime.strptime(pago[0], '%d/%m/%Y %H:%M').date()
             inquilino = pago[1]
             monto = pago[2]
-            mensaje += f"{i}\\. {md(inquilino)}: {md(format_currency(monto))} ({fecha_dt.strftime('%d/%m/%Y')})\n"
+            mensaje += f"{i}. {inquilino}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
     else:
-        mensaje += "*📥 Pagos del Mes:* No hay pagos registrados para este período\.\n"
+        mensaje += "Pagos del Mes: No hay pagos registrados para este período.\n"
     mensaje += "\n"
 
     # Gastos del Mes
     gastos = data.get(item_key_gastos, [])
     if gastos:
-        mensaje += "*💸 Gastos del Mes:*\n"
+        mensaje += "Gastos del Mes:\n"
         for i, gasto in enumerate(gastos, 1):
-            fecha_dt = datetime.strptime(gasto[0], '%d/%m/%Y %H:%M').date() # Assuming gasto[0] is a date object
+            fecha_dt = datetime.strptime(gasto[0], '%d/%m/%Y %H:%M').date()
             descripcion = gasto[1]
             monto = gasto[2]
-            mensaje += f"{i}\\. {md(descripcion)}: {md(format_currency(monto))} ({fecha_dt.strftime('%d/%m/%Y')})\n"
+            mensaje += f"{i}. {descripcion}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
     else:
-        mensaje += "*💸 Gastos del Mes:* No hay gastos registrados para este período\.\n"
+        mensaje += "Gastos del Mes: No hay gastos registrados para este período.\n"
+
+    return mensaje
+
+def format_summary(data: dict) -> str:
+    mensaje = "Resumen General:\n"
+    mensaje += f"Ingresos Totales: {format_currency(data['total_ingresos'])}\n"
+    mensaje += f"Gastos Totales: {format_currency(data['total_gastos'])}\n"
+    mensaje += f"Comisión: {format_currency(data['total_comision'])}\n"
+    mensaje += f"Monto Neto: {format_currency(data['monto_neto'])}\n\n"
+
+    # Últimos 3 pagos
+    ultimos_pagos = data.get('ultimos_pagos', [])
+    if ultimos_pagos:
+        mensaje += "Últimos Pagos:\n"
+        for i, pago in enumerate(ultimos_pagos, 1):
+            fecha_dt = pago[0] # Assuming pago[0] is a date object
+            inquilino = pago[1]
+            monto = pago[2]
+            mensaje += f"{i}. {inquilino}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
+    else:
+        mensaje += "Últimos Pagos: No hay pagos recientes.\n"
+    mensaje += "\n"
+
+    # Últimos 3 gastos
+    ultimos_gastos = data.get('ultimos_gastos', [])
+    if ultimos_gastos:
+        mensaje += "Últimos Gastos:\n"
+        for i, gasto in enumerate(ultimos_gastos, 1):
+            fecha_dt = gasto[0] # Assuming gasto[0] is a date object
+            descripcion = gasto[1]
+            monto = gasto[2]
+            mensaje += f"{i}. {descripcion}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
+    else:
+        mensaje += "Últimos Gastos: No hay gastos recientes.\n"
 
     return mensaje
 
