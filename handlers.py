@@ -276,6 +276,7 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'ultimos_pagos',
     if data[item_key_pagos]:
         for i, pago in enumerate(data[item_key_pagos], 1):
             fecha_obj, inquilino, monto = pago
+            logger.info(f"DEBUG: Tipo de fecha_obj (pagos): {type(fecha_obj)}, Valor: {fecha_obj}")
             fecha_dt = fecha_obj if isinstance(fecha_obj, (date, datetime)) else parse_date_string(fecha_obj)
             if fecha_dt:
                 mensaje += f"{i}\. {md(inquilino)}: {md(format_currency(monto))} ({fecha_dt.strftime('%d/%m/%Y')})\n"
@@ -284,10 +285,12 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'ultimos_pagos',
     else:
         mensaje += "No hay pagos registrados.\n"
 
-    mensaje += "\n💸 *Gastos:*\n"
+    mensaje += "\n💸 *Gastos:*
+"
     if data[item_key_gastos]:
         for i, gasto in enumerate(data[item_key_gastos], 1):
             fecha_obj, descripcion, monto = gasto
+            logger.info(f"DEBUG: Tipo de fecha_obj (gastos): {type(fecha_obj)}, Valor: {fecha_obj}")
             fecha_dt = fecha_obj if isinstance(fecha_obj, (date, datetime)) else parse_date_string(fecha_obj)
             if fecha_dt:
                 mensaje += f"{i}\. {md(descripcion)}: {md(format_currency(monto))} ({fecha_dt.strftime('%d/%m/%Y')})\n"
