@@ -132,8 +132,8 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         resumen_data = await obtener_resumen()
-        mensaje = format_report("Resumen de Alquileres", resumen_data)
-        await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())
+        mensaje = str(resumen_data) # Convert dictionary to string for raw display
+        await update.message.reply_text(mensaje, reply_markup=create_main_menu_keyboard()) # Removed parse_mode
         return MENU
     except Exception as e:
         logger.error("Error al generar resumen", exc_info=True)
@@ -251,52 +251,4 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("❌ Ocurrió un error inesperado.", reply_markup=create_main_menu_keyboard())
 
 def format_report(title: str, data: dict, item_key_pagos: str = 'ultimos_pagos', item_key_gastos: str = 'ultimos_gastos') -> str:
-    total_ingresos = md(format_currency(data["total_ingresos"]))
-    total_comision = md(format_currency(data["total_comision"]))
-    total_gastos = md(format_currency(data["total_gastos"]))
-    monto_neto = md(format_currency(data["monto_neto"]))
-
-    mensaje = f"📊 *{md(title)}*\n\n"
-    mensaje += f"💰 *Total Ingresos:* {total_ingresos}\n"
-    mensaje += f"💼 *Comisión Total:* {total_comision}\n"
-    mensaje += f"💸 *Total Gastos:* {total_gastos}\n"
-    mensaje += f"🏦 *Monto Neto:* {monto_neto}\n\n"
-
-    date_formats_to_try = ['%d/%m/%Y %H:%M', '%Y-%m-%d', '%d/%m/%Y']
-
-    def parse_date_string(date_str):
-        for fmt in date_formats_to_try:
-            try:
-                return datetime.strptime(date_str, fmt)
-            except ValueError:
-                continue
-        return None
-
-    mensaje += "📥 *Pagos:*\n"
-    if data[item_key_pagos]:
-        for i, pago in enumerate(data[item_key_pagos], 1):
-            fecha_obj, inquilino, monto = pago
-            logger.info(f"DEBUG: Tipo de fecha_obj (pagos): {type(fecha_obj)}, Valor: {fecha_obj}")
-            fecha_dt = fecha_obj if isinstance(fecha_obj, (date, datetime)) else parse_date_string(fecha_obj)
-            if fecha_dt:
-                mensaje += f"{i}\. {md(inquilino)}: {md(format_currency(monto))} ({fecha_dt.strftime('%d/%m/%Y')})\n"
-            else:
-                mensaje += f"{i}\. {md(inquilino)}: {md(format_currency(monto))} ({md(str(fecha_obj))})\n"
-    else:
-        mensaje += "No hay pagos registrados.\n"
-
-    mensaje += "\n💸 *Gastos:*
-"
-    if data[item_key_gastos]:
-        for i, gasto in enumerate(data[item_key_gastos], 1):
-            fecha_obj, descripcion, monto = gasto
-            logger.info(f"DEBUG: Tipo de fecha_obj (gastos): {type(fecha_obj)}, Valor: {fecha_obj}")
-            fecha_dt = fecha_obj if isinstance(fecha_obj, (date, datetime)) else parse_date_string(fecha_obj)
-            if fecha_dt:
-                mensaje += f"{i}\. {md(descripcion)}: {md(format_currency(monto))} ({fecha_dt.strftime('%d/%m/%Y')})\n"
-            else:
-                mensaje += f"{i}\. {md(descripcion)}: {md(format_currency(monto))} ({md(str(fecha_obj))})\n"
-    else:
-        mensaje += "No hay gastos registrados.\n"
-
-    return mensaje
+    return str(data)
