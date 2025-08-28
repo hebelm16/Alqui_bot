@@ -293,7 +293,7 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'pagos_mes', ite
     if pagos:
         mensaje += "Pagos del Mes:\n"
         for i, pago in enumerate(pagos, 1):
-            fecha_dt = datetime.strptime(pago[0], '%d/%m/%Y %H:%M').date()
+            fecha_dt = datetime.strptime(str(pago[0]), '%Y-%m-%d').date()
             inquilino = pago[1]
             monto = pago[2]
             mensaje += f"{i}. {inquilino}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
@@ -306,7 +306,7 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'pagos_mes', ite
     if gastos:
         mensaje += "Gastos del Mes:\n"
         for i, gasto in enumerate(gastos, 1):
-            fecha_dt = datetime.strptime(gasto[0], '%d/%m/%Y %H:%M').date()
+            fecha_dt = datetime.strptime(str(gasto[0]), '%Y-%m-%d').date()
             descripcion = gasto[1]
             monto = gasto[2]
             mensaje += f"{i}. {descripcion}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
@@ -327,7 +327,7 @@ def format_summary(data: dict) -> str:
     if ultimos_pagos:
         mensaje += "Últimos Pagos:\n"
         for i, pago in enumerate(ultimos_pagos, 1):
-            fecha_dt = datetime.strptime(pago[0], '%d/%m/%Y %H:%M').date()
+            fecha_dt = datetime.strptime(str(pago[0]), '%Y-%m-%d').date()
             inquilino = pago[1]
             monto = pago[2]
             mensaje += f"{i}. {inquilino}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
@@ -340,7 +340,7 @@ def format_summary(data: dict) -> str:
     if ultimos_gastos:
         mensaje += "Últimos Gastos:\n"
         for i, gasto in enumerate(ultimos_gastos, 1):
-            fecha_dt = datetime.strptime(gasto[0], '%d/%m/%Y %H:%M').date()
+            fecha_dt = datetime.strptime(str(gasto[0]), '%Y-%m-%d').date()
             descripcion = gasto[1]
             monto = gasto[2]
             mensaje += f"{i}. {descripcion}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
