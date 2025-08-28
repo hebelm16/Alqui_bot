@@ -287,3 +287,4 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'pagos_mes', ite
 
     return mensaje
 
+
