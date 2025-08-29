@@ -34,15 +34,16 @@ async def close_pool():
         logger.info("Pool de conexiones cerrado.")
 
 async def inicializar_db():
-    """Crea las tablas de la base de datos si no existen."""
+    """Crea las tablas de la base de datos si no existen y migra el tipo de dato de monto si es necesario."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
+            # Crear tablas con el tipo de dato correcto
             await cur.execute("""
                 CREATE TABLE IF NOT EXISTS pagos (
                     id SERIAL PRIMARY KEY,
                     fecha DATE NOT NULL,
                     inquilino TEXT NOT NULL,
-                    monto REAL NOT NULL
+                    monto NUMERIC(10, 2) NOT NULL
                 )
             """)
             await cur.execute("""
@@ -50,10 +51,34 @@ async def inicializar_db():
                     id SERIAL PRIMARY KEY,
                     fecha DATE NOT NULL,
                     descripcion TEXT NOT NULL,
-                    monto REAL NOT NULL
+                    monto NUMERIC(10, 2) NOT NULL
                 )
             """)
-            logger.info("Base de datos inicializada correctamente.")
+
+            # --- Migración para cambiar REAL a NUMERIC ---
+            # Verificar y alterar la tabla de pagos
+            await cur.execute("""
+                SELECT data_type FROM information_schema.columns
+                WHERE table_name = 'pagos' AND column_name = 'monto';
+            """)
+            result = await cur.fetchone()
+            if result and result[0] == 'real':
+                logger.info("Migrando tipo de dato de 'monto' en la tabla 'pagos' de REAL a NUMERIC(10, 2)...")
+                await cur.execute("ALTER TABLE pagos ALTER COLUMN monto TYPE NUMERIC(10, 2);")
+                logger.info("Migración de 'pagos' completada.")
+
+            # Verificar y alterar la tabla de gastos
+            await cur.execute("""
+                SELECT data_type FROM information_schema.columns
+                WHERE table_name = 'gastos' AND column_name = 'monto';
+            """)
+            result = await cur.fetchone()
+            if result and result[0] == 'real':
+                logger.info("Migrando tipo de dato de 'monto' en la tabla 'gastos' de REAL a NUMERIC(10, 2)...")
+                await cur.execute("ALTER TABLE gastos ALTER COLUMN monto TYPE NUMERIC(10, 2);")
+                logger.info("Migración de 'gastos' completada.")
+
+            logger.info("Base de datos inicializada y/o migrada correctamente.")
 
 # --- Funciones para registrar ---
 
