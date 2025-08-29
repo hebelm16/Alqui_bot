@@ -2,6 +2,7 @@ import os
 import aiopg
 import logging
 from urllib.parse import urlparse
+from decimal import Decimal
 from config import COMMISSION_RATE, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 
 logger = logging.getLogger(__name__)
@@ -140,11 +141,11 @@ async def obtener_resumen() -> dict:
         async with conn.cursor() as cur:
             # Total Ingresos
             await cur.execute("SELECT SUM(monto) FROM pagos")
-            total_pagos = (await cur.fetchone())[0] or 0.0
+            total_pagos = (await cur.fetchone())[0] or Decimal('0.0')
 
             # Total Gastos
             await cur.execute("SELECT SUM(monto) FROM gastos")
-            total_gastos = (await cur.fetchone())[0] or 0.0
+            total_gastos = (await cur.fetchone())[0] or Decimal('0.0')
 
             # Últimos 3 pagos
             await cur.execute("SELECT fecha, inquilino, monto FROM pagos ORDER BY id DESC LIMIT 3")
@@ -154,7 +155,8 @@ async def obtener_resumen() -> dict:
             await cur.execute("SELECT fecha, descripcion, monto FROM gastos ORDER BY id DESC LIMIT 3")
             ultimos_gastos = await cur.fetchall()
 
-    total_comision = total_pagos * COMMISSION_RATE
+    commission_rate_decimal = Decimal(str(COMMISSION_RATE))
+    total_comision = total_pagos * commission_rate_decimal
     monto_neto = total_pagos - total_comision - total_gastos
 
     return {
@@ -172,11 +174,11 @@ async def obtener_informe_mensual(mes: int, anio: int) -> dict:
         async with conn.cursor() as cur:
             # Total Ingresos para el mes/año
             await cur.execute("SELECT SUM(monto) FROM pagos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s", (mes, anio))
-            total_pagos_mes = (await cur.fetchone())[0] or 0.0
+            total_pagos_mes = (await cur.fetchone())[0] or Decimal('0.0')
 
             # Total Gastos para el mes/año
             await cur.execute("SELECT SUM(monto) FROM gastos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s", (mes, anio))
-            total_gastos_mes = (await cur.fetchone())[0] or 0.0
+            total_gastos_mes = (await cur.fetchone())[0] or Decimal('0.0')
 
             # Pagos del mes
             await cur.execute("SELECT fecha, inquilino, monto FROM pagos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY id ASC", (mes, anio))
@@ -186,7 +188,8 @@ async def obtener_informe_mensual(mes: int, anio: int) -> dict:
             await cur.execute("SELECT fecha, descripcion, monto FROM gastos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY id ASC", (mes, anio))
             gastos_mes = await cur.fetchall()
 
-    total_comision_mes = total_pagos_mes * COMMISSION_RATE
+    commission_rate_decimal = Decimal(str(COMMISSION_RATE))
+    total_comision_mes = total_pagos_mes * commission_rate_decimal
     monto_neto_mes = total_pagos_mes - total_comision_mes - total_gastos_mes
 
     return {
