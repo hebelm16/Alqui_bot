@@ -2,6 +2,7 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile
 from telegram.ext import ContextTypes, ConversationHandler
 from datetime import date, datetime
 import logging
+import psycopg2
 from telegram.constants import ParseMode
 from telegram.helpers import escape_markdown
 from database import (
@@ -81,11 +82,13 @@ async def pago_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             parse_mode=ParseMode.MARKDOWN_V2,
             reply_markup=create_main_menu_keyboard()
         )
-        return MENU
+    except psycopg2.Error as e:
+        logger.error(f"Error de base de datos al registrar pago: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error con la base de datos al registrar el pago.", reply_markup=create_main_menu_keyboard())
     except Exception as e:
-        logger.error("Error al registrar pago", exc_info=True)
-        await update.message.reply_text("❌ Hubo un error al registrar el pago.", reply_markup=create_main_menu_keyboard())
-        return MENU
+        logger.error(f"Error inesperado al registrar pago: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error inesperado al registrar el pago.", reply_markup=create_main_menu_keyboard())
+    return MENU
 
 async def gasto_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
@@ -125,35 +128,40 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             parse_mode=ParseMode.MARKDOWN_V2,
             reply_markup=create_main_menu_keyboard()
         )
-        return MENU
+    except psycopg2.Error as e:
+        logger.error(f"Error de base de datos al registrar gasto: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error con la base de datos al registrar el gasto.", reply_markup=create_main_menu_keyboard())
     except Exception as e:
-        logger.error("Error al registrar gasto", exc_info=True)
-        await update.message.reply_text("❌ Hubo un error al registrar el gasto.", reply_markup=create_main_menu_keyboard())
-        return MENU
+        logger.error(f"Error inesperado al registrar gasto: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error inesperado al registrar el gasto.", reply_markup=create_main_menu_keyboard())
+    return MENU
 
 async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    temp_file_path = None
     try:
         resumen_data = await obtener_resumen()
         mensaje = format_summary(resumen_data)
 
-        # Create a temporary file
         with tempfile.NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8', suffix='.txt') as temp_file:
             temp_file.write(mensaje)
             temp_file_path = temp_file.name
 
-        # Send the file
         with open(temp_file_path, 'rb') as f:
             await update.message.reply_document(document=InputFile(f, filename='resumen_general.txt'),
                                                 caption='Aquí está tu resumen general.')
-
-        # Clean up: delete the temporary file
-        os.remove(temp_file_path)
-
-        return MENU
+    except psycopg2.Error as e:
+        logger.error(f"Error de base de datos al generar resumen: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error con la base de datos al generar el resumen.", reply_markup=create_main_menu_keyboard())
+    except IOError as e:
+        logger.error(f"Error de archivo al generar resumen: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error al crear el archivo de resumen.", reply_markup=create_main_menu_keyboard())
     except Exception as e:
-        logger.error("Error al generar resumen", exc_info=True)
-        await update.message.reply_text("❌ Hubo un error al generar el resumen.", reply_markup=create_main_menu_keyboard())
-        return MENU
+        logger.error(f"Error inesperado al generar resumen: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error inesperado al generar el resumen.", reply_markup=create_main_menu_keyboard())
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+    return MENU
 
 async def informe_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [
@@ -203,29 +211,32 @@ async def generar_informe_mensual_custom(update: Update, context: ContextTypes.D
         return INFORME_GENERAR
 
 async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_TYPE, mes: int, anio: int) -> int:
+    temp_file_path = None
     try:
         report_data = await obtener_informe_mensual(mes, anio)
         title = f"Informe Mensual - {mes}/{anio}"
         mensaje = format_report(title, report_data)
 
-        # Create a temporary file
         with tempfile.NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8', suffix='.txt') as temp_file:
             temp_file.write(mensaje)
             temp_file_path = temp_file.name
 
-        # Send the file
         with open(temp_file_path, 'rb') as f:
             await update.message.reply_document(document=InputFile(f, filename=f'informe_mensual_{mes}_{anio}.txt'),
                                                 caption='Aquí está tu informe mensual.')
-
-        # Clean up: delete the temporary file
-        os.remove(temp_file_path)
-
-        return MENU
+    except psycopg2.Error as e:
+        logger.error(f"Error de base de datos al generar informe: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error con la base de datos al generar el informe.", reply_markup=create_main_menu_keyboard())
+    except IOError as e:
+        logger.error(f"Error de archivo al generar informe: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error al crear el archivo de informe.", reply_markup=create_main_menu_keyboard())
     except Exception as e:
-        logger.error("Error al generar informe mensual", exc_info=True)
-        await update.message.reply_text("❌ Hubo un error al generar el informe.", reply_markup=create_main_menu_keyboard())
-        return MENU
+        logger.error(f"Error inesperado al generar informe: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error inesperado al generar el informe.", reply_markup=create_main_menu_keyboard())
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+    return MENU
 
 async def deshacer_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [
@@ -244,11 +255,13 @@ async def deshacer_pago_handler(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             mensaje = "No hay pagos para deshacer."
         await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())
-        return MENU
+    except psycopg2.Error as e:
+        logger.error(f"Error de base de datos al deshacer pago: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error con la base de datos al deshacer el pago.", reply_markup=create_main_menu_keyboard())
     except Exception as e:
-        logger.error("Error al deshacer pago", exc_info=True)
-        await update.message.reply_text("❌ Hubo un error al deshacer el pago.", reply_markup=create_main_menu_keyboard())
-        return MENU
+        logger.error(f"Error inesperado al deshacer pago: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error inesperado al deshacer el pago.", reply_markup=create_main_menu_keyboard())
+    return MENU
 
 async def deshacer_gasto_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
@@ -258,11 +271,13 @@ async def deshacer_gasto_handler(update: Update, context: ContextTypes.DEFAULT_T
         else:
             mensaje = "No hay gastos para deshacer."
         await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())
-        return MENU
+    except psycopg2.Error as e:
+        logger.error(f"Error de base de datos al deshacer gasto: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error con la base de datos al deshacer el gasto.", reply_markup=create_main_menu_keyboard())
     except Exception as e:
-        logger.error("Error al deshacer gasto", exc_info=True)
-        await update.message.reply_text("❌ Hubo un error al deshacer el gasto.", reply_markup=create_main_menu_keyboard())
-        return MENU
+        logger.error(f"Error inesperado al deshacer gasto: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error inesperado al deshacer el gasto.", reply_markup=create_main_menu_keyboard())
+    return MENU
 
 async def volver_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Operación cancelada.", reply_markup=create_main_menu_keyboard())

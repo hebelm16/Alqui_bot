@@ -104,34 +104,36 @@ async def registrar_gasto(fecha: str, descripcion: str, monto: float) -> int:
 # --- Funciones para deshacer ---
 
 async def deshacer_ultimo_pago() -> tuple:
-    """Elimina el último pago registrado y devuelve sus detalles."""
+    """Elimina el último pago registrado y devuelve sus detalles de forma atómica."""
     async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            # Primero, obtenemos el último pago
-            await cur.execute("SELECT id, inquilino, monto FROM pagos ORDER BY id DESC LIMIT 1")
-            ultimo_pago = await cur.fetchone()
-            if ultimo_pago:
-                pago_id, inquilino, monto = ultimo_pago
-                # Ahora, lo eliminamos
-                await cur.execute("DELETE FROM pagos WHERE id = %s", (pago_id,))
-                logger.info(f"Pago con ID {pago_id} eliminado.")
-                return inquilino, monto
-            return None, None
+        async with conn.transaction():
+            async with conn.cursor() as cur:
+                # Primero, obtenemos y bloqueamos el último pago
+                await cur.execute("SELECT id, inquilino, monto FROM pagos ORDER BY id DESC LIMIT 1 FOR UPDATE")
+                ultimo_pago = await cur.fetchone()
+                if ultimo_pago:
+                    pago_id, inquilino, monto = ultimo_pago
+                    # Ahora, lo eliminamos
+                    await cur.execute("DELETE FROM pagos WHERE id = %s", (pago_id,))
+                    logger.info(f"Pago con ID {pago_id} eliminado.")
+                    return inquilino, monto
+                return None, None
 
 async def deshacer_ultimo_gasto() -> tuple:
-    """Elimina el último gasto registrado y devuelve sus detalles."""
+    """Elimina el último gasto registrado y devuelve sus detalles de forma atómica."""
     async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            # Primero, obtenemos el último gasto
-            await cur.execute("SELECT id, descripcion, monto FROM gastos ORDER BY id DESC LIMIT 1")
-            ultimo_gasto = await cur.fetchone()
-            if ultimo_gasto:
-                gasto_id, descripcion, monto = ultimo_gasto
-                # Ahora, lo eliminamos
-                await cur.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
-                logger.info(f"Gasto con ID {gasto_id} eliminado.")
-                return descripcion, monto
-            return None, None
+        async with conn.transaction():
+            async with conn.cursor() as cur:
+                # Primero, obtenemos y bloqueamos el último gasto
+                await cur.execute("SELECT id, descripcion, monto FROM gastos ORDER BY id DESC LIMIT 1 FOR UPDATE")
+                ultimo_gasto = await cur.fetchone()
+                if ultimo_gasto:
+                    gasto_id, descripcion, monto = ultimo_gasto
+                    # Ahora, lo eliminamos
+                    await cur.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
+                    logger.info(f"Gasto con ID {gasto_id} eliminado.")
+                    return descripcion, monto
+                return None, None
 
 # --- Funciones para informes ---
 
