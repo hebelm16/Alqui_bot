@@ -4,8 +4,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # === Configuración de Autenticación ===
-# Lista de IDs de usuarios de Telegram autorizados
-AUTHORIZED_USERS = [13814098]
+# Lista de IDs de usuarios de Telegram autorizados.
+# Se carga desde la variable de entorno AUTHORIZED_USERS_CSV (separados por coma).
+# Si no se define, se usa un valor por defecto.
+authorized_users_csv = os.getenv("AUTHORIZED_USERS_CSV", "13814098")
+try:
+    AUTHORIZED_USERS = [int(user_id.strip()) for user_id in authorized_users_csv.split(',')]
+except (ValueError, AttributeError):
+    print("ADVERTENCIA: La lista de usuarios autorizados (AUTHORIZED_USERS_CSV) no es válida. Usando valor por defecto.")
+    AUTHORIZED_USERS = [13814098]
 
 # === Configuración del Bot ===
 # Token del bot de Telegram, obtenido de una variable de entorno
