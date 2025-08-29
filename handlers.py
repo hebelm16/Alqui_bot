@@ -206,7 +206,7 @@ async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_
     try:
         report_data = await obtener_informe_mensual(mes, anio)
         title = f"Informe Mensual - {mes}/{anio}"
-        mensaje = format_report(title, report_data, item_key_pagos='pagos_mes', item_key_gastos='gastos_mes')
+        mensaje = format_report(title, report_data)
 
         # Create a temporary file
         with tempfile.NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8', suffix='.txt') as temp_file:
@@ -278,7 +278,22 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update and update.effective_message:
         await update.message.reply_text("❌ Ocurrió un error inesperado.", reply_markup=create_main_menu_keyboard())
 
-def format_report(title: str, data: dict, item_key_pagos: str = 'pagos_mes', item_key_gastos: str = 'gastos_mes') -> str:
+def _format_transaction_list(title: str, transactions: list, empty_message: str) -> str:
+    """Formats a list of transactions (pagos or gastos) into a string."""
+    if not transactions:
+        return f"{title}: {empty_message}\n"
+
+    message = f"{title}:\n"
+    for i, transaction in enumerate(transactions, 1):
+        # transaction is a tuple: (fecha, descripcion/inquilino, monto)
+        fecha_dt = datetime.strptime(str(transaction[0]), '%Y-%m-%d').date()
+        description = transaction[1]
+        amount = transaction[2]
+        message += f"{i}. {description}: {format_currency(amount)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
+    return message
+
+def format_report(title: str, data: dict) -> str:
+    """Formats the monthly report data into a string."""
     mensaje = f"{title}\n\n"
 
     # Resumen General
@@ -288,64 +303,49 @@ def format_report(title: str, data: dict, item_key_pagos: str = 'pagos_mes', ite
     mensaje += f"Comisión: {format_currency(data['total_comision'])}\n"
     mensaje += f"Monto Neto: {format_currency(data['monto_neto'])}\n\n"
 
-    # Pagos del Mes
-    pagos = data.get(item_key_pagos, [])
-    if pagos:
-        mensaje += "Pagos del Mes:\n"
-        for i, pago in enumerate(pagos, 1):
-            fecha_dt = datetime.strptime(str(pago[0]), '%Y-%m-%d').date()
-            inquilino = pago[1]
-            monto = pago[2]
-            mensaje += f"{i}. {inquilino}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
-    else:
-        mensaje += "Pagos del Mes: No hay pagos registrados para este período.\n"
+    # Pagos
+    pagos = data.get('pagos_mes', [])
+    mensaje += _format_transaction_list(
+        "Pagos del Mes",
+        pagos,
+        "No hay pagos registrados para este período."
+    )
     mensaje += "\n"
 
-    # Gastos del Mes
-    gastos = data.get(item_key_gastos, [])
-    if gastos:
-        mensaje += "Gastos del Mes:\n"
-        for i, gasto in enumerate(gastos, 1):
-            fecha_dt = datetime.strptime(str(gasto[0]), '%Y-%m-%d').date()
-            descripcion = gasto[1]
-            monto = gasto[2]
-            mensaje += f"{i}. {descripcion}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
-    else:
-        mensaje += "Gastos del Mes: No hay gastos registrados para este período.\n"
+    # Gastos
+    gastos = data.get('gastos_mes', [])
+    mensaje += _format_transaction_list(
+        "Gastos del Mes",
+        gastos,
+        "No hay gastos registrados para este período."
+    )
 
     return mensaje
 
 def format_summary(data: dict) -> str:
+    """Formats the summary data into a string."""
     mensaje = "Resumen General:\n"
     mensaje += f"Ingresos Totales: {format_currency(data['total_ingresos'])}\n"
     mensaje += f"Gastos Totales: {format_currency(data['total_gastos'])}\n"
     mensaje += f"Comisión: {format_currency(data['total_comision'])}\n"
     mensaje += f"Monto Neto: {format_currency(data['monto_neto'])}\n\n"
 
-    # Últimos 3 pagos
-    ultimos_pagos = data.get('ultimos_pagos', [])
-    if ultimos_pagos:
-        mensaje += "Últimos Pagos:\n"
-        for i, pago in enumerate(ultimos_pagos, 1):
-            fecha_dt = datetime.strptime(str(pago[0]), '%Y-%m-%d').date()
-            inquilino = pago[1]
-            monto = pago[2]
-            mensaje += f"{i}. {inquilino}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
-    else:
-        mensaje += "Últimos Pagos: No hay pagos recientes.\n"
+    # Pagos
+    pagos = data.get('ultimos_pagos', [])
+    mensaje += _format_transaction_list(
+        "Últimos Pagos",
+        pagos,
+        "No hay pagos recientes."
+    )
     mensaje += "\n"
 
-    # Últimos 3 gastos
-    ultimos_gastos = data.get('ultimos_gastos', [])
-    if ultimos_gastos:
-        mensaje += "Últimos Gastos:\n"
-        for i, gasto in enumerate(ultimos_gastos, 1):
-            fecha_dt = datetime.strptime(str(gasto[0]), '%Y-%m-%d').date()
-            descripcion = gasto[1]
-            monto = gasto[2]
-            mensaje += f"{i}. {descripcion}: {format_currency(monto)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
-    else:
-        mensaje += "Últimos Gastos: No hay gastos recientes.\n"
+    # Gastos
+    gastos = data.get('ultimos_gastos', [])
+    mensaje += _format_transaction_list(
+        "Últimos Gastos",
+        gastos,
+        "No hay gastos recientes."
+    )
 
     return mensaje
 
