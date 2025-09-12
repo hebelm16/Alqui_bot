@@ -3,6 +3,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from datetime import date, datetime
 import logging
 import psycopg2
+from decimal import Decimal, InvalidOperation
 from telegram.constants import ParseMode
 from telegram.helpers import escape_markdown
 from database import (
@@ -55,12 +56,12 @@ async def pago_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return await volver_menu(update, context)
 
     try:
-        monto = float(texto.replace(",", "").replace("RD$", "").strip())
+        monto = Decimal(texto.replace(",", "").replace("RD$", "").strip())
         context.user_data['pago_monto'] = monto
         reply_markup = ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
         await update.message.reply_text(f"Monto registrado: {format_currency(monto)}\nAhora escribe el nombre del inquilino:", reply_markup=reply_markup)
         return PAGO_NOMBRE
-    except ValueError:
+    except InvalidOperation:
         await update.message.reply_text("Monto inválido. Intenta de nuevo con un número válido (ej: 3000):")
         return PAGO_MONTO
 
@@ -101,12 +102,12 @@ async def gasto_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         return await volver_menu(update, context)
 
     try:
-        monto = float(texto.replace(",", "").replace("RD$", "").strip())
+        monto = Decimal(texto.replace(",", "").replace("RD$", "").strip())
         context.user_data['gasto_monto'] = monto
         reply_markup = ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
         await update.message.reply_text(f"Monto registrado: {format_currency(monto)}\nAhora escribe la descripción del gasto:", reply_markup=reply_markup)
         return GASTO_DESC
-    except ValueError:
+    except InvalidOperation:
         await update.message.reply_text("Monto inválido. Intenta de nuevo con un número válido (ej: 500):")
         return GASTO_MONTO
 

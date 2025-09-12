@@ -83,7 +83,7 @@ async def inicializar_db():
 
 # --- Funciones para registrar ---
 
-async def registrar_pago(fecha: str, inquilino: str, monto: float) -> int:
+async def registrar_pago(fecha: str, inquilino: str, monto: Decimal) -> int:
     """Registra un nuevo pago en la base de datos."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -92,7 +92,7 @@ async def registrar_pago(fecha: str, inquilino: str, monto: float) -> int:
             logger.info(f"Pago registrado con ID: {pago_id[0]}")
             return pago_id[0]
 
-async def registrar_gasto(fecha: str, descripcion: str, monto: float) -> int:
+async def registrar_gasto(fecha: str, descripcion: str, monto: Decimal) -> int:
     """Registra un nuevo gasto en la base de datos."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:

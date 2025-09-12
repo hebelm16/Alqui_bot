@@ -1,6 +1,6 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
 import logging
-import asyncio
+
 from config import BOT_TOKEN
 from database import inicializar_db, init_pool, close_pool
 from handlers import (
