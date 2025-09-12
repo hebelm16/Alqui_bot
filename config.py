@@ -1,7 +1,10 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Construye la ruta al archivo .env en el directorio base del proyecto
+dotenv_path = Path(__file__).resolve().parent / '.env'
+load_dotenv(dotenv_path=dotenv_path)
 
 # === Configuración de Autenticación ===
 # Lista de IDs de usuarios de Telegram autorizados.
