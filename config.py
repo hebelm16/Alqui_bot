@@ -4,9 +4,7 @@ from dotenv import load_dotenv
 
 # Construye la ruta al archivo .env en el directorio base del proyecto
 dotenv_path = Path(__file__).resolve().parent / '.env'
-print(f"Buscando .env en: {dotenv_path}")
 load_dotenv(dotenv_path=dotenv_path)
-print(f"Valor de BOT_TOKEN después de load_dotenv: {os.getenv('BOT_TOKEN')}")
 
 # === Configuración de Autenticación ===
 # Lista de IDs de usuarios de Telegram autorizados.
