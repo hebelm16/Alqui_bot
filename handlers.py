@@ -8,7 +8,8 @@ from telegram.constants import ParseMode
 from telegram.helpers import escape_markdown
 from database import (
     registrar_pago, registrar_gasto, obtener_resumen, obtener_informe_mensual,
-    deshacer_ultimo_pago, deshacer_ultimo_gasto
+    deshacer_ultimo_pago, deshacer_ultimo_gasto, crear_inquilino, obtener_inquilinos,
+    cambiar_estado_inquilino, obtener_inquilino_por_id
 )
 from config import AUTHORIZED_USERS
 import os
@@ -17,9 +18,14 @@ import tempfile
 logger = logging.getLogger(__name__)
 
 # === Estados de conversación ===
-MENU, PAGO_MONTO, PAGO_NOMBRE, GASTO_MONTO, GASTO_DESC, INFORME_MES, INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR = range(9)
+(
+    MENU, PAGO_SELECT_INQUILINO, PAGO_MONTO, GASTO_MONTO, GASTO_DESC,
+    INFORME_MES, INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR,
+    INQUILINO_MENU, INQUILINO_ADD_NOMBRE, INQUILINO_DEACTIVATE_SELECT,
+    INQUILINO_ACTIVATE_SELECT
+) = range(13)
 
-# === Helper ===
+# === Helpers ===
 def format_currency(value: float) -> str:
     return f"RD${value:,.2f}"
 
@@ -29,12 +35,16 @@ def md(text: str) -> str:
 def create_main_menu_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton("📥 Registrar Pago"), KeyboardButton("💸 Registrar Gasto")],
+        [KeyboardButton("👤 Gestionar Inquilinos")],
         [KeyboardButton("📊 Ver Resumen"), KeyboardButton("📈 Generar Informe")],
         [KeyboardButton("🗑️ Deshacer")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# === Handlers ===
+def create_cancel_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
+
+# === Handlers Principales ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.effective_user.id
     if user_id not in AUTHORIZED_USERS:
@@ -45,59 +55,178 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Bienvenido al sistema de gestión de alquileres. Selecciona una opción:", reply_markup=reply_markup)
     return MENU
 
+async def volver_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data.clear()
+    await update.message.reply_text("Operación cancelada. Volviendo al menú principal.", reply_markup=create_main_menu_keyboard())
+    return MENU
+
+# === Flujo Registrar Pago ===
 async def pago_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    reply_markup = ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
-    await update.message.reply_text("Escribe el monto del pago recibido (ej: 3000):", reply_markup=reply_markup)
+    inquilinos = await obtener_inquilinos(activos_only=True)
+    if not inquilinos:
+        await update.message.reply_text(
+            "No hay inquilinos activos. Por favor, añade un inquilino primero desde el menú 'Gestionar Inquilinos'.",
+            reply_markup=create_main_menu_keyboard()
+        )
+        return MENU
+
+    keyboard = [[KeyboardButton(inquilino[1])] for inquilino in inquilinos]
+    keyboard.append([KeyboardButton("❌ Cancelar")])
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    await update.message.reply_text("Selecciona el inquilino que realizó el pago:", reply_markup=reply_markup)
+    return PAGO_SELECT_INQUILINO
+
+async def pago_select_inquilino(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    nombre_inquilino = update.message.text
+    context.user_data['nombre_inquilino'] = nombre_inquilino
+    
+    await update.message.reply_text(f"Inquilino seleccionado: {nombre_inquilino}. Ahora, escribe el monto del pago:", reply_markup=create_cancel_keyboard())
     return PAGO_MONTO
 
 async def pago_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     texto = update.message.text.strip()
-    if texto == "❌ Cancelar":
-        return await volver_menu(update, context)
-
     try:
         monto = Decimal(texto.replace(",", "").replace("RD$", "").strip())
         context.user_data['pago_monto'] = monto
-        reply_markup = ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
-        await update.message.reply_text(f"Monto registrado: {format_currency(monto)}\nAhora escribe el nombre del inquilino:", reply_markup=reply_markup)
-        return PAGO_NOMBRE
-    except InvalidOperation:
-        await update.message.reply_text("Monto inválido. Intenta de nuevo con un número válido (ej: 3000):")
-        return PAGO_MONTO
+        
+        nombre_inquilino = context.user_data['nombre_inquilino']
+        fecha = date.today()
 
-async def pago_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    nombre = update.message.text.strip()
-    if nombre == "❌ Cancelar":
-        return await volver_menu(update, context)
-
-    monto = context.user_data['pago_monto']
-    fecha = date.today()
-
-    try:
-        await registrar_pago(fecha, nombre, monto)
+        await registrar_pago(fecha, nombre_inquilino, monto)
+        
         await update.message.reply_text(
             f"✅ Pago registrado correctamente:\n"
             f"📅 Fecha: {fecha.strftime('%d/%m/%Y')}\n"
-            f"👤 Inquilino: {md(nombre)}\n"
+            f"👤 Inquilino: {md(nombre_inquilino)}\n"
             f"💵 Monto: {md(format_currency(monto))}",
             parse_mode=ParseMode.MARKDOWN_V2,
             reply_markup=create_main_menu_keyboard()
         )
+        context.user_data.clear()
+        return MENU
+
+    except InvalidOperation:
+        await update.message.reply_text("Monto inválido. Intenta de nuevo con un número válido (ej: 3000):")
+        return PAGO_MONTO
     except psycopg2.Error as e:
-        if hasattr(e, 'pgcode') and e.pgcode == '23505': # Código de error para unique_violation
+        if hasattr(e, 'pgcode') and e.pgcode == '23505':
             await update.message.reply_text(
-                f"❌ Ya existe un pago registrado para *{md(nombre)}* en la fecha de hoy\. Si quieres modificarlo, primero elimina el pago anterior usando la opción \'Deshacer\'.",
+                f"❌ Ya existe un pago registrado para *{md(context.user_data['nombre_inquilino'])}* en la fecha de hoy\. Si quieres modificarlo, usa la opción 'Deshacer'.",
                 parse_mode=ParseMode.MARKDOWN_V2,
                 reply_markup=create_main_menu_keyboard()
             )
         else:
             logger.error(f"Error de base de datos al registrar pago: {e}", exc_info=True)
             await update.message.reply_text("❌ Hubo un error con la base de datos al registrar el pago.", reply_markup=create_main_menu_keyboard())
+        context.user_data.clear()
+        return MENU
     except Exception as e:
         logger.error(f"Error inesperado al registrar pago: {e}", exc_info=True)
         await update.message.reply_text("❌ Hubo un error inesperado al registrar el pago.", reply_markup=create_main_menu_keyboard())
-    return MENU
+        context.user_data.clear()
+        return MENU
 
+# === Flujo Gestionar Inquilinos ===
+def create_inquilinos_menu_keyboard() -> ReplyKeyboardMarkup:
+    keyboard = [
+        [KeyboardButton("➕ Añadir Inquilino"), KeyboardButton("📋 Listar Inquilinos")],
+        [KeyboardButton("❌ Desactivar Inquilino"), KeyboardButton("✅ Activar Inquilino")],
+        [KeyboardButton("⬅️ Volver al Menú Principal")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+async def gestionar_inquilinos_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Selecciona una opción para gestionar los inquilinos:", reply_markup=create_inquilinos_menu_keyboard())
+    return INQUILINO_MENU
+
+async def add_inquilino_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Escribe el nombre completo del nuevo inquilino:", reply_markup=create_cancel_keyboard())
+    return INQUILINO_ADD_NOMBRE
+
+async def add_inquilino_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    nombre = update.message.text.strip()
+    try:
+        await crear_inquilino(nombre)
+        await update.message.reply_text(f"✅ Inquilino '{nombre}' añadido correctamente.", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
+    except psycopg2.Error as e:
+        if hasattr(e, 'pgcode') and e.pgcode == '23505': # unique_violation
+            await update.message.reply_text(f"❌ El inquilino '{nombre}' ya existe.", reply_markup=create_inquilinos_menu_keyboard())
+        else:
+            logger.error(f"Error de DB al añadir inquilino: {e}", exc_info=True)
+            await update.message.reply_text("❌ Hubo un error con la base de datos.", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
+
+async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    inquilinos = await obtener_inquilinos(activos_only=False)
+    if not inquilinos:
+        mensaje = "No hay inquilinos registrados."
+    else:
+        mensaje = "Lista de Inquilinos:\n"
+        for _, nombre, activo in inquilinos:
+            estado = "✅ Activo" if activo else "❌ Inactivo"
+            mensaje += f"\- {md(nombre)} ({estado})\n"
+    
+    await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_inquilinos_menu_keyboard())
+    return INQUILINO_MENU
+
+async def deactivate_inquilino_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    inquilinos = await obtener_inquilinos(activos_only=True)
+    if not inquilinos:
+        await update.message.reply_text("No hay inquilinos activos para desactivar.", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
+    
+    context.user_data['inquilinos_list'] = {i[1]: i[0] for i in inquilinos}
+    keyboard = [[KeyboardButton(nombre)] for _, nombre, _ in inquilinos]
+    keyboard.append([KeyboardButton("❌ Cancelar")])
+    
+    await update.message.reply_text("Selecciona el inquilino que quieres desactivar:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    return INQUILINO_DEACTIVATE_SELECT
+
+async def deactivate_inquilino_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    nombre = update.message.text.strip()
+    inquilino_id = context.user_data.get('inquilinos_list', {}).get(nombre)
+
+    if not inquilino_id:
+        await update.message.reply_text("Selección inválida. Por favor, usa el teclado.", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
+
+    await cambiar_estado_inquilino(inquilino_id, False)
+    await update.message.reply_text(f"Inquilino '{nombre}' ha sido desactivado.", reply_markup=create_inquilinos_menu_keyboard())
+    context.user_data.clear()
+    return INQUILINO_MENU
+
+async def activate_inquilino_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    inquilinos = await obtener_inquilinos(activos_only=False)
+    inquilinos_inactivos = [i for i in inquilinos if not i[2]]
+
+    if not inquilinos_inactivos:
+        await update.message.reply_text("No hay inquilinos inactivos para activar.", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
+
+    context.user_data['inquilinos_list'] = {i[1]: i[0] for i in inquilinos_inactivos}
+    keyboard = [[KeyboardButton(nombre)] for _, nombre, _ in inquilinos_inactivos]
+    keyboard.append([KeyboardButton("❌ Cancelar")])
+
+    await update.message.reply_text("Selecciona el inquilino que quieres activar:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    return INQUILINO_ACTIVATE_SELECT
+
+async def activate_inquilino_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    nombre = update.message.text.strip()
+    inquilino_id = context.user_data.get('inquilinos_list', {}).get(nombre)
+
+    if not inquilino_id:
+        await update.message.reply_text("Selección inválida. Por favor, usa el teclado.", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
+
+    await cambiar_estado_inquilino(inquilino_id, True)
+    await update.message.reply_text(f"Inquilino '{nombre}' ha sido activado.", reply_markup=create_inquilinos_menu_keyboard())
+    context.user_data.clear()
+    return INQUILINO_MENU
+
+# === Otros Handlers (sin cambios) ===
+# (Aquí irían gasto_inicio, gasto_monto, etc. que no han sido modificados en este paso)
 async def gasto_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
     await update.message.reply_text("Escribe el monto del gasto (ej: 500):", reply_markup=reply_markup)
@@ -287,10 +416,6 @@ async def deshacer_gasto_handler(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("❌ Hubo un error inesperado al deshacer el gasto.", reply_markup=create_main_menu_keyboard())
     return MENU
 
-async def volver_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Operación cancelada.", reply_markup=create_main_menu_keyboard())
-    return MENU
-
 async def volver_menu_principal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = create_main_menu_keyboard()
     await update.message.reply_text("Selecciona una opción:", reply_markup=reply_markup)
@@ -302,13 +427,11 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("❌ Ocurrió un error inesperado.", reply_markup=create_main_menu_keyboard())
 
 def _format_transaction_list(title: str, transactions: list, empty_message: str) -> str:
-    """Formats a list of transactions (pagos or gastos) into a string."""
     if not transactions:
         return f"{title}: {empty_message}\n"
 
     message = f"{title}:\n"
     for i, transaction in enumerate(transactions, 1):
-        # transaction is a tuple: (fecha, descripcion/inquilino, monto)
         fecha_dt = datetime.strptime(str(transaction[0]), '%Y-%m-%d').date()
         description = transaction[1]
         amount = transaction[2]
@@ -316,60 +439,32 @@ def _format_transaction_list(title: str, transactions: list, empty_message: str)
     return message
 
 def format_report(title: str, data: dict) -> str:
-    """Formats the monthly report data into a string."""
     mensaje = f"{title}\n\n"
-
-    # Resumen General
     mensaje += "Resumen General:\n"
     mensaje += f"Ingresos Totales: {format_currency(data['total_ingresos'])}\n"
     mensaje += f"Gastos Totales: {format_currency(data['total_gastos'])}\n"
     mensaje += f"Comisión: {format_currency(data['total_comision'])}\n"
     mensaje += f"Monto Neto: {format_currency(data['monto_neto'])}\n\n"
-
-    # Pagos
+    
     pagos = data.get('pagos_mes', [])
-    mensaje += _format_transaction_list(
-        "Pagos del Mes",
-        pagos,
-        "No hay pagos registrados para este período."
-    )
+    mensaje += _format_transaction_list("Pagos del Mes", pagos, "No hay pagos registrados para este período.")
     mensaje += "\n"
-
-    # Gastos
+    
     gastos = data.get('gastos_mes', [])
-    mensaje += _format_transaction_list(
-        "Gastos del Mes",
-        gastos,
-        "No hay gastos registrados para este período."
-    )
-
+    mensaje += _format_transaction_list("Gastos del Mes", gastos, "No hay gastos registrados para este período.")
     return mensaje
 
 def format_summary(data: dict) -> str:
-    """Formats the summary data into a string."""
     mensaje = "Resumen General:\n"
     mensaje += f"Ingresos Totales: {format_currency(data['total_ingresos'])}\n"
     mensaje += f"Gastos Totales: {format_currency(data['total_gastos'])}\n"
     mensaje += f"Comisión: {format_currency(data['total_comision'])}\n"
     mensaje += f"Monto Neto: {format_currency(data['monto_neto'])}\n\n"
 
-    # Pagos
     pagos = data.get('ultimos_pagos', [])
-    mensaje += _format_transaction_list(
-        "Últimos Pagos",
-        pagos,
-        "No hay pagos recientes."
-    )
+    mensaje += _format_transaction_list("Últimos Pagos", pagos, "No hay pagos recientes.")
     mensaje += "\n"
 
-    # Gastos
     gastos = data.get('ultimos_gastos', [])
-    mensaje += _format_transaction_list(
-        "Últimos Gastos",
-        gastos,
-        "No hay gastos recientes."
-    )
-
+    mensaje += _format_transaction_list("Últimos Gastos", gastos, "No hay gastos recientes.")
     return mensaje
-
-

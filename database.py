@@ -38,6 +38,15 @@ async def inicializar_db():
     """Crea las tablas de la base de datos si no existen y migra el tipo de dato de monto si es necesario."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
+            # Crear tabla de inquilinos
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS inquilinos (
+                    id SERIAL PRIMARY KEY,
+                    nombre TEXT NOT NULL UNIQUE,
+                    activo BOOLEAN NOT NULL DEFAULT TRUE
+                )
+            """)
+
             # Crear tablas con el tipo de dato correcto
             await cur.execute("""
                 CREATE TABLE IF NOT EXISTS pagos (
@@ -203,3 +212,40 @@ async def obtener_informe_mensual(mes: int, anio: int) -> dict:
         "pagos_mes": pagos_mes,
         "gastos_mes": gastos_mes
     }
+
+# --- Funciones para Inquilinos ---
+
+async def crear_inquilino(nombre: str) -> int:
+    """Crea un nuevo inquilino en la base de datos."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("INSERT INTO inquilinos (nombre) VALUES (%s) RETURNING id", (nombre,))
+            inquilino_id = await cur.fetchone()
+            logger.info(f"Inquilino '{nombre}' creado con ID: {inquilino_id[0]}")
+            return inquilino_id[0]
+
+async def obtener_inquilinos(activos_only: bool = True) -> list:
+    """Obtiene una lista de inquilinos. Por defecto, solo los activos."""
+    query = "SELECT id, nombre, activo FROM inquilinos"
+    if activos_only:
+        query += " WHERE activo = TRUE"
+    query += " ORDER BY nombre ASC"
+    
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(query)
+            return await cur.fetchall()
+
+async def obtener_inquilino_por_id(inquilino_id: int) -> tuple:
+    """Obtiene un inquilino por su ID."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT id, nombre, activo FROM inquilinos WHERE id = %s", (inquilino_id,))
+            return await cur.fetchone()
+
+async def cambiar_estado_inquilino(inquilino_id: int, estado: bool) -> bool:
+    """Cambia el estado de un inquilino (activo/inactivo)."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("UPDATE inquilinos SET activo = %s WHERE id = %s", (estado, inquilino_id))
+            return cur.rowcount > 0
