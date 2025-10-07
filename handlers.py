@@ -84,8 +84,15 @@ async def pago_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             reply_markup=create_main_menu_keyboard()
         )
     except psycopg2.Error as e:
-        logger.error(f"Error de base de datos al registrar pago: {e}", exc_info=True)
-        await update.message.reply_text("❌ Hubo un error con la base de datos al registrar el pago.", reply_markup=create_main_menu_keyboard())
+        if hasattr(e, 'pgcode') and e.pgcode == '23505': # Código de error para unique_violation
+            await update.message.reply_text(
+                f"❌ Ya existe un pago registrado para *{md(nombre)}* en la fecha de hoy\. Si quieres modificarlo, primero elimina el pago anterior usando la opción \'Deshacer\'.",
+                parse_mode=ParseMode.MARKDOWN_V2,
+                reply_markup=create_main_menu_keyboard()
+            )
+        else:
+            logger.error(f"Error de base de datos al registrar pago: {e}", exc_info=True)
+            await update.message.reply_text("❌ Hubo un error con la base de datos al registrar el pago.", reply_markup=create_main_menu_keyboard())
     except Exception as e:
         logger.error(f"Error inesperado al registrar pago: {e}", exc_info=True)
         await update.message.reply_text("❌ Hubo un error inesperado al registrar el pago.", reply_markup=create_main_menu_keyboard())

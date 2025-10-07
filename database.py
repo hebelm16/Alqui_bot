@@ -44,7 +44,8 @@ async def inicializar_db():
                     id SERIAL PRIMARY KEY,
                     fecha DATE NOT NULL,
                     inquilino TEXT NOT NULL,
-                    monto NUMERIC(10, 2) NOT NULL
+                    monto NUMERIC(10, 2) NOT NULL,
+                    UNIQUE(inquilino, fecha)
                 )
             """)
             await cur.execute("""
