@@ -3,6 +3,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from datetime import date, datetime
 import logging
 import psycopg2
+from psycopg2.errors import UniqueViolation
 from decimal import Decimal, InvalidOperation
 from telegram.constants import ParseMode
 from telegram.helpers import escape_markdown
@@ -149,14 +150,12 @@ async def add_inquilino_save(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         await crear_inquilino(nombre)
         await update.message.reply_text(f"✅ Inquilino '{nombre}' añadido correctamente.", reply_markup=create_inquilinos_menu_keyboard())
-        return INQUILINO_MENU
+    except UniqueViolation:
+        await update.message.reply_text(f"❌ El inquilino '{nombre}' ya existe.", reply_markup=create_inquilinos_menu_keyboard())
     except psycopg2.Error as e:
-        if hasattr(e, 'pgcode') and e.pgcode == '23505': # unique_violation
-            await update.message.reply_text(f"❌ El inquilino '{nombre}' ya existe.", reply_markup=create_inquilinos_menu_keyboard())
-        else:
-            logger.error(f"Error de DB al añadir inquilino: {e}", exc_info=True)
-            await update.message.reply_text("❌ Hubo un error con la base de datos.", reply_markup=create_inquilinos_menu_keyboard())
-        return INQUILINO_MENU
+        logger.error(f"Error de DB al añadir inquilino: {e}", exc_info=True)
+        await update.message.reply_text("❌ Hubo un error con la base de datos.", reply_markup=create_inquilinos_menu_keyboard())
+    return INQUILINO_MENU
 
 async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     inquilinos = await obtener_inquilinos(activos_only=False)
