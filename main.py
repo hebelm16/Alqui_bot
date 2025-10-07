@@ -92,12 +92,7 @@ def main() -> None:
             CommandHandler("start", start),
             CommandHandler("cancel", volver_menu),
             MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
-        ],
-        map_to_parent={
-            # Volver al menú principal desde sub-menús
-            MENU: {MENU},
-            INQUILINO_MENU: {MENU}
-        }
+        ]
     )
 
     app.add_handler(conv_handler)
