@@ -166,7 +166,7 @@ async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         mensaje = "Lista de Inquilinos:\n"
         for _, nombre, activo in inquilinos:
             estado = "✅ Activo" if activo else "❌ Inactivo"
-            mensaje += f"\- {md(nombre)} ({estado})\n"
+            mensaje += f"\- {md(nombre)} \({md(estado)}\)\n"
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_inquilinos_menu_keyboard())
     return INQUILINO_MENU
