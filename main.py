@@ -1,6 +1,7 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
 import logging
 <<<<<<< HEAD
+<<<<<<< HEAD
 from datetime import time
 import asyncio
 import os
@@ -11,6 +12,9 @@ if os.name == 'nt':
 =======
 >>>>>>> parent of 4f1a5fd (notifi)
 
+=======
+
+>>>>>>> parent of 4f1a5fd (notifi)
 from config import BOT_TOKEN
 from database import inicializar_db, init_pool, close_pool
 from handlers import (

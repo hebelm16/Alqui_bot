@@ -201,8 +201,12 @@ async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         for _, nombre, activo in inquilinos:
             estado = "✅ Activo" if activo else "❌ Inactivo"
 <<<<<<< HEAD
+<<<<<<< HEAD
             dia_pago_str = f"Día de pago: {dia_pago}" if dia_pago else "Día de pago: Sin asignar"
             mensaje += f"\\- {md(nombre)} \\({md(estado)}\\) \\- {md(dia_pago_str)}\n"
+=======
+            mensaje += f"\- {md(nombre)} \({md(estado)}\)\n"
+>>>>>>> parent of 4f1a5fd (notifi)
 =======
             mensaje += f"\- {md(nombre)} \({md(estado)}\)\n"
 >>>>>>> parent of 4f1a5fd (notifi)
@@ -338,7 +342,11 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
 
     context.user_data['transactions_map'] = transactions_map
 <<<<<<< HEAD
+<<<<<<< HEAD
     mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)"
+=======
+    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\."
+>>>>>>> parent of 4f1a5fd (notifi)
 =======
     mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\."
 >>>>>>> parent of 4f1a5fd (notifi)
@@ -389,6 +397,7 @@ async def editar_ejecutar_borrado(update: Update, context: ContextTypes.DEFAULT_
     return MENU
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 # === Tarea Automática de Recordatorios ===
 async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE):
     """Envía recordatorios de pago para inquilinos cuya fecha de pago se acerca."""
@@ -421,6 +430,8 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE):
         except Exception as send_e:
             logger.error(f"No se pudo notificar al admin sobre el error en la tarea de recordatorios: {send_e}", exc_info=True)
 
+=======
+>>>>>>> parent of 4f1a5fd (notifi)
 =======
 >>>>>>> parent of 4f1a5fd (notifi)
 # === Otros Handlers ===
