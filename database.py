@@ -12,7 +12,10 @@ pool = None
 async def init_pool(_=None):
     """Inicializa el pool de conexiones a la base de datos usando asyncpg."""
     global pool
-    database_url = os.getenv("DATABASE_URL")
+    # Priorizar la URL pública para evitar problemas de red interna en Railway
+    database_url = os.getenv("DATABASE_PUBLIC_URL")
+    if not database_url:
+        database_url = os.getenv("DATABASE_URL")
 
     dsn = None
     if database_url:
