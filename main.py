@@ -58,20 +58,20 @@ def main() -> None:
                 MessageHandler(filters.Regex("^🗑️ Deshacer$"), deshacer_menu),
             ],
             # Flujo de pago
-            PAGO_SELECT_INQUILINO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_select_inquilino)],
-            PAGO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_monto)],
+            PAGO_SELECT_INQUILINO: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), pago_select_inquilino)],
+            PAGO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), pago_monto)],
             
             # Flujo de gasto
-            GASTO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_monto)],
-            GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_desc)],
+            GASTO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), gasto_monto)],
+            GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), gasto_desc)],
 
             # Flujo de informes
             INFORME_MES: [
                 MessageHandler(filters.Regex("^Informe Mes Actual$"), informe_mes_actual),
                 MessageHandler(filters.Regex("^Elegir Mes y Año$"), informe_pedir_mes),
             ],
-            INFORME_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, informe_pedir_anio)],
-            INFORME_GENERAR: [MessageHandler(filters.TEXT & ~filters.COMMAND, generar_informe_mensual_custom)],
+            INFORME_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), informe_pedir_anio)],
+            INFORME_GENERAR: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), generar_informe_mensual_custom)],
 
             # Flujo de deshacer
             DESHACER_MENU: [
@@ -88,18 +88,18 @@ def main() -> None:
                 MessageHandler(filters.Regex("^✅ Activar Inquilino$"), activate_inquilino_prompt),
                 MessageHandler(filters.Regex("^⬅️ Volver al Menú Principal$"), start),
             ],
-            INQUILINO_ADD_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_inquilino_save)],
-            INQUILINO_DEACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, deactivate_inquilino_update)],
-            INQUILINO_ACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, activate_inquilino_update)],
+            INQUILINO_ADD_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), add_inquilino_save)],
+            INQUILINO_DEACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), deactivate_inquilino_update)],
+            INQUILINO_ACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), activate_inquilino_update)],
 
             # Flujo de editar/borrar
             EDITAR_INICIO: [
                 MessageHandler(filters.Regex("^Mes Actual$"), editar_mes_actual),
                 MessageHandler(filters.Regex("^Elegir Mes y Año$"), editar_pedir_mes),
             ],
-            EDITAR_PEDIR_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_pedir_anio)],
-            EDITAR_PEDIR_MES: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_listar_transacciones_custom)],
-            EDITAR_SELECCIONAR_TRANSACCION: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_seleccionar_transaccion)],
+            EDITAR_PEDIR_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), editar_pedir_anio)],
+            EDITAR_PEDIR_MES: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), editar_listar_transacciones_custom)],
+            EDITAR_SELECCIONAR_TRANSACCION: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), editar_seleccionar_transaccion)],
             EDITAR_CONFIRMAR_BORRADO: [MessageHandler(filters.Regex("^Sí, borrar$"), editar_ejecutar_borrado)],
         },
         fallbacks=[
