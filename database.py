@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 pool = None
 
-async def init_pool():
+async def init_pool(_=None):
     """Inicializa el pool de conexiones a la base de datos."""
     global pool
     database_url = os.getenv("DATABASE_URL")
