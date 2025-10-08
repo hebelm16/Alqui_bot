@@ -11,18 +11,39 @@ logger = logging.getLogger(__name__)
 pool = None
 
 async def init_pool():
-    """Inicializa el pool de conexiones a la base de datos."""
+    """
+    Inicializa el pool de conexiones a la base de datos.
+    Busca las credenciales en el siguiente orden:
+    1. DATABASE_URL (ideal para producción en Railway).
+    2. DATABASE_PUBLIC_URL (ideal para desarrollo local).
+    3. Variables de entorno individuales (PGHOST, PGUSER, etc.).
+    """
     global pool
-    database_url = os.getenv("DATABASE_URL")
-    if database_url:
-        url = urlparse(database_url)
+    
+    # Prioridad 1: DATABASE_URL (para producción)
+    dsn_url = os.getenv("DATABASE_URL")
+    
+    # Prioridad 2: DATABASE_PUBLIC_URL (para desarrollo local)
+    if not dsn_url:
+        dsn_url = os.getenv("DATABASE_PUBLIC_URL")
+
+    if dsn_url:
+        # Si se encontró una URL, se parsea para construir el DSN
+        url = urlparse(dsn_url)
         dsn = f"dbname={url.path[1:]} user={url.username} password={url.password} host={url.hostname} port={url.port}"
+        logger.info(f"Conectando a la base de datos usando URL: host={url.hostname}, dbname={url.path[1:]}")
     else:
+        # Prioridad 3: Variables de entorno individuales
         dsn = f"dbname={DB_NAME} user={DB_USER} password={DB_PASSWORD} host={DB_HOST} port={DB_PORT}"
+        logger.info(f"Conectando a la base de datos usando variables de entorno individuales: host={DB_HOST}, dbname={DB_NAME}")
+
+    if not dsn or "password=None" in dsn or "host=None" in dsn:
+        logger.critical("No se encontraron credenciales de base de datos completas. Defina DATABASE_URL, DATABASE_PUBLIC_URL o las variables PG*.")
+        raise ValueError("Credenciales de base de datos incompletas o no encontradas.")
 
     try:
         pool = await aiopg.create_pool(dsn)
-        logger.info("Pool de conexiones a la base de datos inicializado.")
+        logger.info("Pool de conexiones a la base de datos inicializado correctamente.")
     except Exception as e:
         logger.error(f"Error al inicializar el pool de conexiones: {e}")
         raise

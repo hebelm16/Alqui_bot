@@ -343,7 +343,7 @@ async def editar_seleccionar_transaccion(update: Update, context: ContextTypes.D
     transactions_map = context.user_data.get('transactions_map', {})
 
     if code not in transactions_map:
-        await update.message.reply_text("Código inválido. Por favor, introduce un código de la lista (ej: P1).", reply_markup=create_cancel_keyboard())
+        await update.message.reply_text("Código inválido. Por favor, introduce un código de la lista (ej: P1).")
         return EDITAR_SELECCIONAR_TRANSACCION
 
     transaction = transactions_map[code]
@@ -391,10 +391,9 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
             logger.info("No hay recordatorios de pago para enviar hoy.")
             return
 
-        mensaje = "🔔 *Recordatorios de Pago Pendiente* 🔔\n\n"
+        mensaje = "🔔 *Recordatorios de Pago Pendiente* 🔔\\n\\n"
         for nombre in inquilinos_a_notificar:
-            mensaje += f"\\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.
-"
+            mensaje += f"\\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\\.\n"
         
         await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
         logger.info(f"Recordatorios enviados a {len(inquilinos_a_notificar)} inquilinos.")
