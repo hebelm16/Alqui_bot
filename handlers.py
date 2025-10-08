@@ -1,6 +1,6 @@
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile
 from telegram.ext import ContextTypes, ConversationHandler
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import logging
 import psycopg2
 from psycopg2.errors import UniqueViolation
@@ -10,7 +10,7 @@ from telegram.helpers import escape_markdown
 from database import (
     registrar_pago, registrar_gasto, obtener_resumen, obtener_informe_mensual,
     deshacer_ultimo_pago, deshacer_ultimo_gasto, crear_inquilino, obtener_inquilinos,
-    cambiar_estado_inquilino, delete_pago_by_id, delete_gasto_by_id,
+    cambiar_estado_inquilino, obtener_inquilino_por_id, delete_pago_by_id, delete_gasto_by_id,
     obtener_inquilinos_para_recordatorio, actualizar_dia_pago_inquilino
 )
 from config import AUTHORIZED_USERS
@@ -404,7 +404,7 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             code = f"P{i}"
             transactions_map[code] = {"id": p_id, "tipo": "pago"}
             p_fecha = p_fecha_str if hasattr(p_fecha_str, 'strftime') else datetime.strptime(str(p_fecha_str), '%Y-%m-%d').date()
-            mensaje += f"`{md(code)}`: {md(p_inquilino)} - {md(format_currency(p_monto))} el {md(p_fecha.strftime('%d/%m'))}\n"
+            mensaje += f"`{code}`: {md(p_inquilino)} \- {md(format_currency(p_monto))} el {p_fecha.strftime('%d/%m')}\n"
     
     if gastos:
         mensaje += "\n*Gastos*\n"
@@ -412,7 +412,7 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             code = f"G{i}"
             transactions_map[code] = {"id": g_id, "tipo": "gasto"}
             g_fecha = g_fecha_str if hasattr(g_fecha_str, 'strftime') else datetime.strptime(str(g_fecha_str), '%Y-%m-%d').date()
-            mensaje += f"`{md(code)}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {md(g_fecha.strftime('%d/%m'))}\n"
+            mensaje += f"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
 
     context.user_data['transactions_map'] = transactions_map
     mensaje += "\nEscribe el código de la transacción que quieres borrar (ej: P1 o G2)."
@@ -474,15 +474,17 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
         if not inquilinos_a_notificar:
             logger.info("No hay recordatorios de pago para enviar hoy.")
             return
+            return
 
         mensaje = f"🔔 *{md('Recordatorios de Pago Pendiente')}* 🔔\n\n"
         for nombre in inquilinos_a_notificar:
             mensaje += f"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún.\n"
         
         await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
-    except Exception as e:
         logger.error(f"Error en la tarea de enviar recordatorios: {e}", exc_info=True)
         await context.bot.send_message(chat_id=chat_id, text="Ocurrió un error inesperado en la tarea de recordatorios.")
+    except Exception as e:
+        logger.error(f"Error en la tarea de enviar recordatorios: {e}", exc_info=True)
         await context.bot.send_message(chat_id=chat_id, text=f"Ocurrió un error en la tarea de recordatorios: {e}")
 
 # === Otros Handlers ===
