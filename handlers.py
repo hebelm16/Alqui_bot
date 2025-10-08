@@ -398,7 +398,7 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
     transactions_map = {}
     
     if pagos:
-        mensaje += "*Pagos*\n"
+        mensaje += "*Pagos*\n" # This line is causing the error
         for i, (p_id, p_fecha_str, p_inquilino, p_monto) in enumerate(pagos, 1):
             code = f"P{i}"
             transactions_map[code] = {"id": p_id, "tipo": "pago"}
@@ -414,8 +414,7 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             mensaje += f"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
 
     context.user_data['transactions_map'] = transactions_map
-    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)
-ě."
+    mensaje += "\nEscribe el código de la transacción que quieres borrar (ej: P1 o G2)."
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_cancel_keyboard())
     return EDITAR_SELECCIONAR_TRANSACCION
