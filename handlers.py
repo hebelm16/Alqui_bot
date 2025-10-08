@@ -45,6 +45,49 @@ def create_main_menu_keyboard() -> ReplyKeyboardMarkup:
 def create_cancel_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
 
+async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, tipo: str):
+    """Función genérica para guardar una transacción (pago o gasto) y manejar errores."""
+    try:
+        monto = context.user_data['monto']
+        detalle = context.user_data['detalle']
+        fecha = date.today()
+
+        if tipo == 'pago':
+            await registrar_pago(fecha, detalle, monto)
+            mensaje = (
+                f"✅ Pago registrado correctamente:\n"
+                f"📅 Fecha: {fecha.strftime('%d/%m/%Y')}\n"
+                f"👤 Inquilino: {md(detalle)}\n"
+                f"💵 Monto: {md(format_currency(monto))}"
+            )
+        elif tipo == 'gasto':
+            await registrar_gasto(fecha, detalle, monto)
+            mensaje = (
+                f"✅ Gasto registrado correctamente:\n"
+                f"📅 Fecha: {fecha.strftime('%d/%m/%Y')}\n"
+                f"📝 Descripción: {md(detalle)}\n"
+                f"💸 Monto: {md(format_currency(monto))}"
+            )
+        else:
+            return # No debería ocurrir
+
+        await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())
+
+    except UniqueViolation:
+        await update.message.reply_text(
+            f"❌ Ya existe un pago registrado para *{md(detalle)}* en la fecha de hoy\. Si quieres modificarlo, usa la opción 'Deshacer'.",
+            parse_mode=ParseMode.MARKDOWN_V2,
+            reply_markup=create_main_menu_keyboard()
+        )
+    except psycopg2.Error as e:
+        logger.error(f"Error de base de datos al registrar {tipo}: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Hubo un error con la base de datos al registrar el {tipo}.", reply_markup=create_main_menu_keyboard())
+    except Exception as e:
+        logger.error(f"Error inesperado al registrar {tipo}: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Hubo un error inesperado al registrar el {tipo}.", reply_markup=create_main_menu_keyboard())
+    finally:
+        context.user_data.clear()
+
 # === Handlers Principales ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.effective_user.id
@@ -79,54 +122,41 @@ async def pago_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     return PAGO_SELECT_INQUILINO
 
 async def pago_select_inquilino(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    nombre_inquilino = update.message.text
-    context.user_data['nombre_inquilino'] = nombre_inquilino
-    
-    await update.message.reply_text(f"Inquilino seleccionado: {nombre_inquilino}. Ahora, escribe el monto del pago:", reply_markup=create_cancel_keyboard())
+    context.user_data['detalle'] = update.message.text
+    await update.message.reply_text(f"Inquilino seleccionado: {update.message.text}. Ahora, escribe el monto del pago:", reply_markup=create_cancel_keyboard())
     return PAGO_MONTO
 
 async def pago_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     texto = update.message.text.strip()
     try:
         monto = Decimal(texto.replace(",", "").replace("RD$", "").strip())
-        context.user_data['pago_monto'] = monto
-        
-        nombre_inquilino = context.user_data['nombre_inquilino']
-        fecha = date.today()
-
-        await registrar_pago(fecha, nombre_inquilino, monto)
-        
-        await update.message.reply_text(
-            f"✅ Pago registrado correctamente:\n"
-            f"📅 Fecha: {fecha.strftime('%d/%m/%Y')}\n"
-            f"👤 Inquilino: {md(nombre_inquilino)}\n"
-            f"💵 Monto: {md(format_currency(monto))}",
-            parse_mode=ParseMode.MARKDOWN_V2,
-            reply_markup=create_main_menu_keyboard()
-        )
-        context.user_data.clear()
+        context.user_data['monto'] = monto
+        await _save_transaction(update, context, 'pago')
         return MENU
-
     except InvalidOperation:
         await update.message.reply_text("Monto inválido. Intenta de nuevo con un número válido (ej: 3000):")
         return PAGO_MONTO
-    except psycopg2.Error as e:
-        if hasattr(e, 'pgcode') and e.pgcode == '23505':
-            await update.message.reply_text(
-                f"❌ Ya existe un pago registrado para *{md(context.user_data['nombre_inquilino'])}* en la fecha de hoy\. Si quieres modificarlo, usa la opción 'Deshacer'.",
-                parse_mode=ParseMode.MARKDOWN_V2,
-                reply_markup=create_main_menu_keyboard()
-            )
-        else:
-            logger.error(f"Error de base de datos al registrar pago: {e}", exc_info=True)
-            await update.message.reply_text("❌ Hubo un error con la base de datos al registrar el pago.", reply_markup=create_main_menu_keyboard())
-        context.user_data.clear()
-        return MENU
-    except Exception as e:
-        logger.error(f"Error inesperado al registrar pago: {e}", exc_info=True)
-        await update.message.reply_text("❌ Hubo un error inesperado al registrar el pago.", reply_markup=create_main_menu_keyboard())
-        context.user_data.clear()
-        return MENU
+
+# === Flujo Registrar Gasto ===
+async def gasto_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Escribe el monto del gasto (ej: 500):", reply_markup=create_cancel_keyboard())
+    return GASTO_MONTO
+
+async def gasto_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    texto = update.message.text.strip()
+    try:
+        monto = Decimal(texto.replace(",", "").replace("RD$", "").strip())
+        context.user_data['monto'] = monto
+        await update.message.reply_text(f"Monto registrado: {format_currency(monto)}\nAhora escribe la descripción del gasto:", reply_markup=create_cancel_keyboard())
+        return GASTO_DESC
+    except InvalidOperation:
+        await update.message.reply_text("Monto inválido. Intenta de nuevo con un número válido (ej: 500):")
+        return GASTO_MONTO
+
+async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data['detalle'] = update.message.text.strip()
+    await _save_transaction(update, context, 'gasto')
+    return MENU
 
 # === Flujo Gestionar Inquilinos ===
 def create_inquilinos_menu_keyboard() -> ReplyKeyboardMarkup:
@@ -224,54 +254,7 @@ async def activate_inquilino_update(update: Update, context: ContextTypes.DEFAUL
     context.user_data.clear()
     return INQUILINO_MENU
 
-# === Otros Handlers (sin cambios) ===
-# (Aquí irían gasto_inicio, gasto_monto, etc. que no han sido modificados en este paso)
-async def gasto_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    reply_markup = ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
-    await update.message.reply_text("Escribe el monto del gasto (ej: 500):", reply_markup=reply_markup)
-    return GASTO_MONTO
-
-async def gasto_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    texto = update.message.text.strip()
-    if texto == "❌ Cancelar":
-        return await volver_menu(update, context)
-
-    try:
-        monto = Decimal(texto.replace(",", "").replace("RD$", "").strip())
-        context.user_data['gasto_monto'] = monto
-        reply_markup = ReplyKeyboardMarkup([[KeyboardButton("❌ Cancelar")]], resize_keyboard=True)
-        await update.message.reply_text(f"Monto registrado: {format_currency(monto)}\nAhora escribe la descripción del gasto:", reply_markup=reply_markup)
-        return GASTO_DESC
-    except InvalidOperation:
-        await update.message.reply_text("Monto inválido. Intenta de nuevo con un número válido (ej: 500):")
-        return GASTO_MONTO
-
-async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    descripcion = update.message.text.strip()
-    if descripcion == "❌ Cancelar":
-        return await volver_menu(update, context)
-
-    monto = context.user_data['gasto_monto']
-    fecha = date.today()
-
-    try:
-        await registrar_gasto(fecha, descripcion, monto)
-        await update.message.reply_text(
-            f"✅ Gasto registrado correctamente:\n"
-            f"📅 Fecha: {fecha.strftime('%d/%m/%Y')}\n"
-            f"📝 Descripción: {md(descripcion)}\n"
-            f"💸 Monto: {md(format_currency(monto))}",
-            parse_mode=ParseMode.MARKDOWN_V2,
-            reply_markup=create_main_menu_keyboard()
-        )
-    except psycopg2.Error as e:
-        logger.error(f"Error de base de datos al registrar gasto: {e}", exc_info=True)
-        await update.message.reply_text("❌ Hubo un error con la base de datos al registrar el gasto.", reply_markup=create_main_menu_keyboard())
-    except Exception as e:
-        logger.error(f"Error inesperado al registrar gasto: {e}", exc_info=True)
-        await update.message.reply_text("❌ Hubo un error inesperado al registrar el gasto.", reply_markup=create_main_menu_keyboard())
-    return MENU
-
+# === Otros Handlers ===
 async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     temp_file_path = None
     try:
