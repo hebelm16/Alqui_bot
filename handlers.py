@@ -203,7 +203,7 @@ async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         for _, nombre, activo, dia_pago in inquilinos:
             estado = "✅ Activo" if activo else "❌ Inactivo"
             dia_pago_str = f"Día de pago: {dia_pago}" if dia_pago else "Día de pago: Sin asignar"
-            mensaje += f"\\- {md(nombre)} \\({md(estado)}\) \\- {md(dia_pago_str)}\n"
+            mensaje += f"\- {md(nombre)} \({md(estado)}\) \- {md(dia_pago_str)}\n"
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_inquilinos_menu_keyboard())
     return INQUILINO_MENU
@@ -414,7 +414,8 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             mensaje += f"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
 
     context.user_data['transactions_map'] = transactions_map
-    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\."
+    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)
+ě."
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_cancel_keyboard())
     return EDITAR_SELECCIONAR_TRANSACCION
@@ -474,8 +475,7 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
 
         mensaje = "🔔 *Recordatorios de Pago Pendiente* 🔔\n\n"
         for nombre in inquilinos_a_notificar:
-            mensaje += f"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.
-"
+            mensaje += f"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún.\n"
         
         await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
         logger.info(f"Recordatorios enviados a {len(inquilinos_a_notificar)} inquilinos.")
