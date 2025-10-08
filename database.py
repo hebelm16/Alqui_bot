@@ -4,63 +4,75 @@ import logging
 from urllib.parse import urlparse
 from decimal import Decimal
 from datetime import date, timedelta
-from config import COMMISSION_RATE, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+from config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 
 logger = logging.getLogger(__name__)
 
-pool = None
-
-async def init_pool():
+class Database:
     """
-    Inicializa el pool de conexiones a la base de datos.
-    Busca las credenciales en el siguiente orden:
-    1. DATABASE_URL (ideal para producción en Railway).
-    2. DATABASE_PUBLIC_URL (ideal para desarrollo local).
-    3. Variables de entorno individuales (PGHOST, PGUSER, etc.).
+    Clase para gestionar la conexión y operaciones con la base de datos PostgreSQL.
+    Proporciona métodos asíncronos para inicializar el pool de conexiones, crear tablas,
+    registrar pagos y gastos, gestionar inquilinos, y realizar consultas y migraciones.
     """
-    global pool
-    
-    # Prioridad 1: DATABASE_URL (para producción)
-    dsn_url = os.getenv("DATABASE_URL")
-    
-    # Prioridad 2: DATABASE_PUBLIC_URL (para desarrollo local)
-    if not dsn_url:
-        dsn_url = os.getenv("DATABASE_PUBLIC_URL")
+    def __init__(self):
+        self.pool = None
 
-    if dsn_url:
-        # Si se encontró una URL, se parsea para construir el DSN
-        url = urlparse(dsn_url)
-        dsn = f"dbname={url.path[1:]} user={url.username} password={url.password} host={url.hostname} port={url.port}"
-        logger.info(f"Conectando a la base de datos usando URL: host={url.hostname}, dbname={url.path[1:]}")
-    else:
-        # Prioridad 3: Variables de entorno individuales
-        dsn = f"dbname={DB_NAME} user={DB_USER} password={DB_PASSWORD} host={DB_HOST} port={DB_PORT}"
-        logger.info(f"Conectando a la base de datos usando variables de entorno individuales: host={DB_HOST}, dbname={DB_NAME}")
+    async def init_pool(self):
+        """
+        Inicializa el pool de conexiones a la base de datos.
+        Busca las credenciales en el siguiente orden:
+        1. DATABASE_URL (ideal para producción en Railway).
+        2. DATABASE_PUBLIC_URL (ideal para desarrollo local).
+        3. Variables de entorno individuales (PGHOST, PGUSER, etc.).
+        """
+        # Prioridad 1: DATABASE_URL (para producción)
+        dsn_url = os.getenv("DATABASE_URL")
+        
+        # Prioridad 2: DATABASE_PUBLIC_URL (para desarrollo local)
+        if not dsn_url:
+            dsn_url = os.getenv("DATABASE_PUBLIC_URL")
 
-    if not dsn or "password=None" in dsn or "host=None" in dsn:
-        logger.critical("No se encontraron credenciales de base de datos completas. Defina DATABASE_URL, DATABASE_PUBLIC_URL o las variables PG*.")
-        raise ValueError("Credenciales de base de datos incompletas o no encontradas.")
+        if dsn_url:
+            # Si se encontró una URL, se parsea para construir el DSN
+            url = urlparse(dsn_url)
+            dsn = f"dbname={url.path[1:]} user={url.username} password={url.password} host={url.hostname} port={url.port}"
+            logger.info(f"Conectando a la base de datos usando URL: host={url.hostname}, dbname={url.path[1:]}")
+        else:
+            # Prioridad 3: Variables de entorno individuales
+            dsn = f"dbname={DB_NAME} user={DB_USER} password={DB_PASSWORD} host={DB_HOST} port={DB_PORT}"
+            logger.info(f"Conectando a la base de datos usando variables de entorno individuales: host={DB_HOST}, dbname={DB_NAME}")
 
-    try:
-        pool = await aiopg.create_pool(dsn)
-        logger.info("Pool de conexiones a la base de datos inicializado correctamente.")
-    except Exception as e:
-        logger.error(f"Error al inicializar el pool de conexiones: {e}")
-        raise
+        # Validar credenciales antes de construir el DSN
+        if dsn_url:
+            url = urlparse(dsn_url)
+            if not url.username or not url.password or not url.hostname or not url.path[1:]:
+                logger.critical("No se encontraron credenciales completas en la URL de la base de datos.")
+                raise ValueError("Credenciales de base de datos incompletas en la URL de la base de datos.")
+        elif not DB_NAME or not DB_USER or not DB_PASSWORD or not DB_HOST or not DB_PORT:
+            logger.critical("No se encontraron credenciales completas en las variables de entorno individuales.")
+            raise ValueError("Credenciales de base de datos incompletas en las variables de entorno.")
 
-async def close_pool():
-    """Cierra el pool de conexiones."""
-    global pool
-    if pool:
-        pool.close()
-        await pool.wait_closed()
-        logger.info("Pool de conexiones cerrado.")
+        minsize = int(os.getenv("DB_POOL_MINSIZE", 1))
+        maxsize = int(os.getenv("DB_POOL_MAXSIZE", 10))
+        try:
+            self.pool = await aiopg.create_pool(dsn, minsize=minsize, maxsize=maxsize)
+            logger.info(f"Pool de conexiones a la base de datos inicializado correctamente (minsize={minsize}, maxsize={maxsize}).")
+        except Exception as e:
+            logger.error(f"Error al inicializar el pool de conexiones: {e}")
+            raise
 
-async def inicializar_db():
+    async def close_pool(self):
+        """Cierra el pool de conexiones."""
+        if self.pool:
+            self.pool.close()
+            await self.pool.wait_closed()
+async def inicializar_db(self):
     """Crea las tablas de la base de datos si no existen y realiza migraciones."""
-    async with pool.acquire() as conn:
+    if self.pool is None:
+        raise RuntimeError("El pool de la base de datos no está inicializado. Llama a init_pool() antes de inicializar la base de datos.")
+    async with self.pool.acquire() as conn:
         async with conn.cursor() as cur:
-            # Crear tabla de inquilinos
+            # Crear tabla de inquilinos (agrega columna 'activo' por defecto TRUE)
             await cur.execute("""
                 CREATE TABLE IF NOT EXISTS inquilinos (
                     id SERIAL PRIMARY KEY,
@@ -112,18 +124,18 @@ async def inicializar_db():
 
 # --- Funciones para registrar ---
 
-async def registrar_pago(fecha: str, inquilino: str, monto: Decimal) -> int:
+async def registrar_pago(self, fecha: str, inquilino: str, monto: Decimal) -> int:
     """Registra un nuevo pago en la base de datos."""
-    async with pool.acquire() as conn:
+    async with self.pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("INSERT INTO pagos (fecha, inquilino, monto) VALUES (%s, %s, %s) RETURNING id", (fecha, inquilino, monto))
             pago_id = await cur.fetchone()
             logger.info(f"Pago registrado con ID: {pago_id[0]}")
             return pago_id[0]
 
-async def registrar_gasto(fecha: str, descripcion: str, monto: Decimal) -> int:
+async def registrar_gasto(self, fecha: str, descripcion: str, monto: Decimal) -> int:
     """Registra un nuevo gasto en la base de datos."""
-    async with pool.acquire() as conn:
+    async with self.pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("INSERT INTO gastos (fecha, descripcion, monto) VALUES (%s, %s, %s) RETURNING id", (fecha, descripcion, monto))
             gasto_id = await cur.fetchone()
@@ -131,38 +143,41 @@ async def registrar_gasto(fecha: str, descripcion: str, monto: Decimal) -> int:
             return gasto_id[0]
 
 # --- Funciones para deshacer ---
+async def deshacer_ultimo_pago(self) -> tuple:
+    """Deshace el último pago registrado y lo elimina de la base de datos."""
+    async with self.pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("BEGIN")
+            await cur.execute("SELECT id, inquilino, monto FROM pagos ORDER BY id DESC LIMIT 1 FOR UPDATE")
+            if ultimo_pago := await cur.fetchone():
+                pago_id, inquilino, monto = ultimo_pago
+                await cur.execute("DELETE FROM pagos WHERE id = %s", (pago_id,))
+                await cur.execute("COMMIT")
+                logger.info(f"Pago con ID {pago_id} eliminado.")
+                return inquilino, monto
+            await cur.execute("ROLLBACK")
+            return None, None
 
-async def deshacer_ultimo_pago() -> tuple:
-    """Elimina el último pago registrado y devuelve sus detalles de forma atómica."""
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            async with conn.cursor() as cur:
-                await cur.execute("SELECT id, inquilino, monto FROM pagos ORDER BY id DESC LIMIT 1 FOR UPDATE")
-                if ultimo_pago := await cur.fetchone():
-                    pago_id, inquilino, monto = ultimo_pago
-                    await cur.execute("DELETE FROM pagos WHERE id = %s", (pago_id,))
-                    logger.info(f"Pago con ID {pago_id} eliminado.")
-                    return inquilino, monto
-                return None, None
-
-async def deshacer_ultimo_gasto() -> tuple:
-    """Elimina el último gasto registrado y devuelve sus detalles de forma atómica."""
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            async with conn.cursor() as cur:
-                await cur.execute("SELECT id, descripcion, monto FROM gastos ORDER BY id DESC LIMIT 1 FOR UPDATE")
-                if ultimo_gasto := await cur.fetchone():
-                    gasto_id, descripcion, monto = ultimo_gasto
-                    await cur.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
-                    logger.info(f"Gasto con ID {gasto_id} eliminado.")
-                    return descripcion, monto
-                return None, None
+async def deshacer_ultimo_gasto(self) -> tuple:
+    """Deshace el último gasto registrado en la base de datos."""
+    async with self.pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("BEGIN")
+            await cur.execute("SELECT id, descripcion, monto FROM gastos ORDER BY id DESC LIMIT 1 FOR UPDATE")
+            if ultimo_gasto := await cur.fetchone():
+                gasto_id, descripcion, monto = ultimo_gasto
+                await cur.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
+                await cur.execute("COMMIT")
+                logger.info(f"Gasto con ID {gasto_id} eliminado.")
+                return descripcion, monto
+            await cur.execute("ROLLBACK")
+            return None, None
 
 # --- Funciones para informes ---
 
-async def obtener_resumen() -> dict:
+async def obtener_resumen(self) -> dict:
     """Calcula el resumen de ingresos, gastos, comisión y neto."""
-    async with pool.acquire() as conn:
+    async with self.pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("SELECT SUM(monto) FROM pagos")
             total_pagos = (await cur.fetchone())[0] or Decimal('0.0')
@@ -170,10 +185,11 @@ async def obtener_resumen() -> dict:
             total_gastos = (await cur.fetchone())[0] or Decimal('0.0')
             await cur.execute("SELECT fecha, inquilino, monto FROM pagos ORDER BY id DESC LIMIT 3")
             ultimos_pagos = await cur.fetchall()
+            await cur.execute("SELECT fecha, inquilino, monto FROM pagos ORDER BY id DESC LIMIT 3")
             await cur.execute("SELECT fecha, descripcion, monto FROM gastos ORDER BY id DESC LIMIT 3")
             ultimos_gastos = await cur.fetchall()
-
-    total_comision = total_pagos * Decimal(str(COMMISSION_RATE))
+    # Define la comisión como el 10% de los ingresos (ajusta según tu lógica)
+    total_comision = total_pagos * Decimal('0.10')
     monto_neto = total_pagos - total_comision - total_gastos
 
     return {
@@ -185,71 +201,46 @@ async def obtener_resumen() -> dict:
         "ultimos_gastos": ultimos_gastos
     }
 
-async def obtener_informe_mensual(mes: int, anio: int) -> dict:
-    """Calcula el informe mensual de ingresos, gastos, comisión y neto."""
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("SELECT SUM(monto) FROM pagos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s", (mes, anio))
-            total_pagos_mes = (await cur.fetchone())[0] or Decimal('0.0')
-            await cur.execute("SELECT SUM(monto) FROM gastos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s", (mes, anio))
-            total_gastos_mes = (await cur.fetchone())[0] or Decimal('0.0')
-            await cur.execute("SELECT id, fecha, inquilino, monto FROM pagos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY id ASC", (mes, anio))
-            pagos_mes = await cur.fetchall()
-            await cur.execute("SELECT id, fecha, descripcion, monto FROM gastos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY id ASC", (mes, anio))
-            gastos_mes = await cur.fetchall()
-
-    total_comision_mes = total_pagos_mes * Decimal(str(COMMISSION_RATE))
-    monto_neto_mes = total_pagos_mes - total_comision_mes - total_gastos_mes
-
-    return {
-        "total_ingresos": total_pagos_mes,
-        "total_comision": total_comision_mes,
-        "total_gastos": total_gastos_mes,
-        "monto_neto": monto_neto_mes,
-        "pagos_mes": pagos_mes,
-        "gastos_mes": gastos_mes
-    }
-
 # --- Funciones para Inquilinos ---
 
-async def crear_inquilino(nombre: str) -> int:
+async def crear_inquilino(self, nombre: str) -> int:
     """Crea un nuevo inquilino en la base de datos."""
-    async with pool.acquire() as conn:
+    async with self.pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("INSERT INTO inquilinos (nombre) VALUES (%s) RETURNING id", (nombre,))
             inquilino_id = await cur.fetchone()
             logger.info(f"Inquilino '{nombre}' creado con ID: {inquilino_id[0]}")
             return inquilino_id[0]
 
-async def obtener_inquilinos(activos_only: bool = True) -> list:
+async def obtener_inquilinos(self, only_active: bool = True) -> list:
     """Obtiene una lista de inquilinos con su día de pago. Por defecto, solo los activos."""
     query = "SELECT id, nombre, activo, dia_pago FROM inquilinos"
-    if activos_only:
+    if only_active:
         query += " WHERE activo = TRUE"
     query += " ORDER BY nombre ASC"
     
-    async with pool.acquire() as conn:
+    async with self.pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(query)
             return await cur.fetchall()
 
-async def obtener_inquilino_por_id(inquilino_id: int) -> tuple:
+async def obtener_inquilino_por_id(self, inquilino_id: int) -> tuple:
     """Obtiene un inquilino por su ID."""
-    async with pool.acquire() as conn:
+    async with self.pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("SELECT id, nombre, activo, dia_pago FROM inquilinos WHERE id = %s", (inquilino_id,))
             return await cur.fetchone()
 
-async def cambiar_estado_inquilino(inquilino_id: int, estado: bool) -> bool:
+async def cambiar_estado_inquilino(self, inquilino_id: int, estado: bool) -> bool:
     """Cambia el estado de un inquilino (activo/inactivo)."""
-    async with pool.acquire() as conn:
+    async with self.pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("UPDATE inquilinos SET activo = %s WHERE id = %s", (estado, inquilino_id))
             return cur.rowcount > 0
 
-async def actualizar_dia_pago_inquilino(inquilino_id: int, dia_pago: int) -> bool:
+async def actualizar_dia_pago_inquilino(self, inquilino_id: int, dia_pago: int) -> bool:
     """Actualiza el día de pago para un inquilino específico."""
-    async with pool.acquire() as conn:
+    async with self.pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("UPDATE inquilinos SET dia_pago = %s WHERE id = %s", (dia_pago, inquilino_id))
             if cur.rowcount > 0:
@@ -259,9 +250,9 @@ async def actualizar_dia_pago_inquilino(inquilino_id: int, dia_pago: int) -> boo
 
 # --- Funciones para Borrar Específicos ---
 
-async def delete_pago_by_id(pago_id: int) -> bool:
+async def delete_pago_by_id(self, pago_id: int) -> bool:
     """Elimina un pago específico por su ID."""
-    async with pool.acquire() as conn:
+    async with self.pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("DELETE FROM pagos WHERE id = %s", (pago_id,))
             if cur.rowcount > 0:
@@ -269,9 +260,9 @@ async def delete_pago_by_id(pago_id: int) -> bool:
                 return True
             return False
 
-async def delete_gasto_by_id(gasto_id: int) -> bool:
+async def delete_gasto_by_id(self, gasto_id: int) -> bool:
     """Elimina un gasto específico por su ID."""
-    async with pool.acquire() as conn:
+    async with self.pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
             if cur.rowcount > 0:
@@ -279,10 +270,13 @@ async def delete_gasto_by_id(gasto_id: int) -> bool:
                 return True
             return False
 
-async def obtener_inquilinos_para_recordatorio() -> list:
+async def obtener_inquilinos_para_recordatorio(self) -> list:
     """
     Obtiene una lista de nombres de inquilinos activos que tienen un pago venciéndose en 2 días
     y que aún no han pagado en el mes actual.
+
+    Returns:
+        list: Lista de nombres de inquilinos a notificar.
     """
     inquilinos_a_notificar = []
     hoy = date.today()
@@ -290,30 +284,13 @@ async def obtener_inquilinos_para_recordatorio() -> list:
     dia_recordatorio = fecha_recordatorio.day
     mes_actual = hoy.month
     anio_actual = hoy.year
-
-    async with pool.acquire() as conn:
+    # Optimizado: Un solo query con LEFT JOIN para encontrar inquilinos activos cuyo día de pago es el día del recordatorio y que no han pagado este mes
+    async with self.pool.acquire() as conn:
         async with conn.cursor() as cur:
-            # 1. Encontrar inquilinos activos cuyo día de pago es el día del recordatorio
-            await cur.execute(
-                "SELECT nombre FROM inquilinos WHERE activo = TRUE AND dia_pago = %s",
-                (dia_recordatorio,)
-            )
-            inquilinos_con_vencimiento = await cur.fetchall()
-
-            if not inquilinos_con_vencimiento:
-                return []
-
-            # 2. Para cada inquilino, verificar si ya pagó este mes
-            for inquilino in inquilinos_con_vencimiento:
-                nombre_inquilino = inquilino[0]
-                await cur.execute("""
-                    SELECT 1 FROM pagos
-                    WHERE inquilino = %s
-                    AND EXTRACT(MONTH FROM fecha) = %s
-                    AND EXTRACT(YEAR FROM fecha) = %s
-                """, (nombre_inquilino, mes_actual, anio_actual))
-
-                if not await cur.fetchone():
-                    inquilinos_a_notificar.append(nombre_inquilino)
-
-    return inquilinos_a_notificar
+            await cur.execute("""
+                    SELECT i.nombre
+                    FROM inquilinos i
+                    LEFT JOIN pagos p ON i.nombre = p.inquilino AND EXTRACT(MONTH FROM p.fecha) = %s AND EXTRACT(YEAR FROM p.fecha) = %s
+                    WHERE i.activo = TRUE AND i.dia_pago = %s AND p.id IS NULL
+                """, (mes_actual, anio_actual, dia_recordatorio))
+            return [row[0] for row in await cur.fetchall()]

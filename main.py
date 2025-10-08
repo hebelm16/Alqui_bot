@@ -1,11 +1,11 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
 import logging
-from datetime import time
 import asyncio
 import os
+import sys
 
 # En Windows, se requiere una política de eventos específica para aiopg
-if os.name == 'nt':
+if os.name == 'nt' and hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from config import BOT_TOKEN
@@ -38,7 +38,7 @@ def main() -> None:
     """Inicia el bot y configura el manejo del ciclo de vida."""
     if not BOT_TOKEN:
         logging.critical("ERROR: No se encontró el token del bot. Define la variable de entorno BOT_TOKEN.")
-        exit(1)
+        sys.exit(1)
 
     async def post_init_with_db(application: Application):
         """Función asíncrona para ejecutar después de la inicialización de la aplicación."""
@@ -124,10 +124,13 @@ def main() -> None:
 
     app.add_handler(conv_handler)
     app.add_error_handler(error_handler)
-
+    logging.info("Bot iniciado correctamente! Presiona Ctrl+C para detener.")
     print("Bot iniciado correctamente! Presiona Ctrl+C para detener.")
     
-    app.run_polling()
+    try:
+        app.run_polling()
+    except Exception as e:
+        logging.exception("Se produjo una excepción al ejecutar el bot:")
 
 if __name__ == '__main__':
     main()
