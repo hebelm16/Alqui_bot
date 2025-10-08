@@ -313,16 +313,18 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
     
     if pagos:
         mensaje += "*Pagos*\n"
-        for i, (p_id, p_fecha, p_inquilino, p_monto) in enumerate(pagos, 1):
+        for i, (p_id, p_fecha_str, p_inquilino, p_monto) in enumerate(pagos, 1):
             code = f"P{i}"
             transactions_map[code] = {"id": p_id, "tipo": "pago"}
+            p_fecha = datetime.strptime(str(p_fecha_str), '%Y-%m-%d').date()
             mensaje += f"`{code}`: {md(p_inquilino)} \- {md(format_currency(p_monto))} el {p_fecha.strftime('%d/%m')}\n"
     
     if gastos:
         mensaje += "\n*Gastos*\n"
-        for i, (g_id, g_fecha, g_desc, g_monto) in enumerate(gastos, 1):
+        for i, (g_id, g_fecha_str, g_desc, g_monto) in enumerate(gastos, 1):
             code = f"G{i}"
             transactions_map[code] = {"id": g_id, "tipo": "gasto"}
+            g_fecha = datetime.strptime(str(g_fecha_str), '%Y-%m-%d').date()
             mensaje += f"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
 
     context.user_data['transactions_map'] = transactions_map
