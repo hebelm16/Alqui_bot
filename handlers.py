@@ -88,6 +88,7 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     except psycopg2.Error as e:
         logger.error(f"Error de base de datos al registrar {tipo}: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Hubo un error con la base de datos al registrar el {tipo}.", reply_markup=create_main_menu_keyboard())
+    # Catching all exceptions to log unexpected errors and notify the user; this ensures the bot does not crash on unforeseen issues.
     except Exception as e:
         logger.error(f"Error inesperado al registrar {tipo}: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Hubo un error inesperado al registrar el {tipo}.", reply_markup=create_main_menu_keyboard())
@@ -463,22 +464,25 @@ async def editar_ejecutar_borrado(update: Update, context: ContextTypes.DEFAULT_
 
 # === Tarea Automática de Recordatorios ===
 async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Envía recordatorios de pago a los inquilinos apropiados."""
-    chat_id = context.job.chat_id
+    chat_id = getattr(getattr(context, "job", None), "chat_id", None)
+    if chat_id is None:
+        logger.error("No se pudo obtener chat_id para enviar recordatorios.")
+        return
     try:
         inquilinos_a_notificar = await obtener_inquilinos_para_recordatorio()
         
         if not inquilinos_a_notificar:
             logger.info("No hay recordatorios de pago para enviar hoy.")
             return
+            return
 
-        mensaje = "🔔 *Recordatorios de Pago Pendiente* 🔔\n\n"
+        mensaje = f"🔔 *{md('Recordatorios de Pago Pendiente')}* 🔔\n\n"
         for nombre in inquilinos_a_notificar:
             mensaje += f"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún.\n"
         
         await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
-        logger.info(f"Recordatorios enviados a {len(inquilinos_a_notificar)} inquilinos.")
-
+        logger.error(f"Error en la tarea de enviar recordatorios: {e}", exc_info=True)
+        await context.bot.send_message(chat_id=chat_id, text="Ocurrió un error inesperado en la tarea de recordatorios.")
     except Exception as e:
         logger.error(f"Error en la tarea de enviar recordatorios: {e}", exc_info=True)
         await context.bot.send_message(chat_id=chat_id, text=f"Ocurrió un error en la tarea de recordatorios: {e}")
