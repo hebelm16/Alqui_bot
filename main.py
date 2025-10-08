@@ -1,23 +1,13 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
 import logging
-<<<<<<< HEAD
-<<<<<<< HEAD
 from datetime import time
-<<<<<<< HEAD
 import asyncio
 import os
 
 # En Windows, se requiere una política de eventos específica para aiopg
 if os.name == 'nt':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-=======
->>>>>>> parent of 4f1a5fd (notifi)
-=======
->>>>>>> parent of 0dffa48 (notifica)
 
-=======
-
->>>>>>> parent of 4f1a5fd (notifi)
 from config import BOT_TOKEN
 from database import inicializar_db, init_pool, close_pool
 from handlers import (
