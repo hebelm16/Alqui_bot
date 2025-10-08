@@ -80,7 +80,7 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     except UniqueViolation:
         await update.message.reply_text(
-            f"❌ Ya existe un pago registrado para *{md(detalle)}* en la fecha de hoy\\. Si quieres modificarlo, usa la opción 'Deshacer'.",
+            f"❌ Ya existe un pago registrado para *{md(detalle)}* en la fecha de hoy\. Si quieres modificarlo, usa la opción 'Deshacer'.",
             parse_mode=ParseMode.MARKDOWN_V2,
             reply_markup=create_main_menu_keyboard()
         )
@@ -203,6 +203,7 @@ async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 <<<<<<< HEAD
 <<<<<<< HEAD
             dia_pago_str = f"Día de pago: {dia_pago}" if dia_pago else "Día de pago: Sin asignar"
+<<<<<<< HEAD
             mensaje += f"\\- {md(nombre)} \\({md(estado)}\\) \\- {md(dia_pago_str)}\n"
 =======
             mensaje += f"\- {md(nombre)} \({md(estado)}\)\n"
@@ -210,6 +211,9 @@ async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 =======
             mensaje += f"\- {md(nombre)} \({md(estado)}\)\n"
 >>>>>>> parent of 4f1a5fd (notifi)
+=======
+            mensaje += f"\- {md(nombre)} \({md(estado)}\) \- {md(dia_pago_str)}\n"
+>>>>>>> parent of 0dffa48 (notifica)
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_inquilinos_menu_keyboard())
     return INQUILINO_MENU
@@ -330,7 +334,7 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             code = f"P{i}"
             transactions_map[code] = {"id": p_id, "tipo": "pago"}
             p_fecha = p_fecha_str if hasattr(p_fecha_str, 'strftime') else datetime.strptime(str(p_fecha_str), '%Y-%m-%d').date()
-            mensaje += f"`{code}`: {md(p_inquilino)} \\- {md(format_currency(p_monto))} el {p_fecha.strftime('%d/%m')}\n"
+            mensaje += f"`{code}`: {md(p_inquilino)} \- {md(format_currency(p_monto))} el {p_fecha.strftime('%d/%m')}\n"
     
     if gastos:
         mensaje += "\n*Gastos*\n"
@@ -338,9 +342,10 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             code = f"G{i}"
             transactions_map[code] = {"id": g_id, "tipo": "gasto"}
             g_fecha = g_fecha_str if hasattr(g_fecha_str, 'strftime') else datetime.strptime(str(g_fecha_str), '%Y-%m-%d').date()
-            mensaje += f"`{code}`: {md(g_desc)} \\- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
+            mensaje += f"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
 
     context.user_data['transactions_map'] = transactions_map
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
     mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)"
@@ -350,6 +355,9 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
 =======
     mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\."
 >>>>>>> parent of 4f1a5fd (notifi)
+=======
+    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\"
+>>>>>>> parent of 0dffa48 (notifica)
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_cancel_keyboard())
     return EDITAR_SELECCIONAR_TRANSACCION
@@ -399,36 +407,32 @@ async def editar_ejecutar_borrado(update: Update, context: ContextTypes.DEFAULT_
 <<<<<<< HEAD
 <<<<<<< HEAD
 # === Tarea Automática de Recordatorios ===
-async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE):
+async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Envía recordatorios de pago para inquilinos cuya fecha de pago se acerca."""
-    # Usamos el primer usuario autorizado como destinatario de las notificaciones
-    if not AUTHORIZED_USERS:
-        logger.warning("No hay usuarios autorizados para enviar recordatorios.")
-        return
-    chat_id = AUTHORIZED_USERS[0]
-
+    chat_id = context.job.chat_id
     try:
-        inquilinos_a_notificar = await obtener_inquilinos_para_recordatorio()
+        inquilinos = await obtener_inquilinos(activos_only=True)
+        if not inquilinos:
+            return
 
-        if inquilinos_a_notificar:
-            fecha_recordatorio = date.today() + timedelta(days=2)
-            dia_vencimiento = fecha_recordatorio.day
+        hoy = date.today()
+        fecha_recordatorio = hoy + timedelta(days=2)
+        recordatorios = []
 
-            mensaje = f"🔔 *Recordatorio de Pagos Próximos* 🔔\n\n"
-            mensaje += f"Los siguientes inquilinos tienen pagos que vencen en 2 días \(el día {dia_vencimiento}\) y aún no han pagado este mes:\n\n"
-            for nombre in inquilinos_a_notificar:
-                mensaje += f"\- {md(nombre)}\n"
-            
-            await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
-            logger.info(f"Recordatorios de pago enviados a {chat_id} para: {', '.join(inquilinos_a_notificar)}")
+        for _, nombre, _, dia_pago in inquilinos:
+            if dia_pago and dia_pago == fecha_recordatorio.day:
+                # Simplificación: Se notifica si el día coincide, sin importar si ya pagó.
+                # Mejoras futuras: Verificar si ya existe un pago para el mes actual.
+                mensaje = f"🔔 Recordatorio: El pago de *{md(nombre)}* vence en 2 días \(el día {dia_pago} de cada mes\."
+                recordatorios.append(mensaje)
+        
+        if recordatorios:
+            mensaje_final = "\n\n".join(recordatorios)
+            await context.bot.send_message(chat_id=chat_id, text=mensaje_final, parse_mode=ParseMode.MARKDOWN_V2)
 
     except Exception as e:
         logger.error(f"Error en la tarea de enviar recordatorios: {e}", exc_info=True)
-        # Notificar al admin sobre el error en la tarea
-        try:
-            await context.bot.send_message(chat_id=chat_id, text=f"Ocurrió un error en la tarea de recordatorios: {md(str(e))}")
-        except Exception as send_e:
-            logger.error(f"No se pudo notificar al admin sobre el error en la tarea de recordatorios: {send_e}", exc_info=True)
+        await context.bot.send_message(chat_id=chat_id, text=f"Ocurrió un error en la tarea de recordatorios: {e}")
 
 =======
 >>>>>>> parent of 4f1a5fd (notifi)
