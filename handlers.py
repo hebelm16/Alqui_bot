@@ -11,7 +11,7 @@ from database import (
     registrar_pago, registrar_gasto, obtener_resumen, obtener_informe_mensual,
     deshacer_ultimo_pago, deshacer_ultimo_gasto, crear_inquilino, obtener_inquilinos,
     cambiar_estado_inquilino, obtener_inquilino_por_id, delete_pago_by_id, delete_gasto_by_id,
-    obtener_inquilinos_para_recordatorio
+    obtener_inquilinos_para_recordatorio, actualizar_dia_pago_inquilino
 )
 from config import AUTHORIZED_USERS
 import os
@@ -25,8 +25,9 @@ logger = logging.getLogger(__name__)
     INFORME_MES, INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR,
     INQUILINO_MENU, INQUILINO_ADD_NOMBRE, INQUILINO_DEACTIVATE_SELECT,
     INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO, EDITAR_PEDIR_MES,
-    EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO
-) = range(18)
+    EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO,
+    INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE
+) = range(20)
 
 # === Helpers ===
 def format_currency(value: float) -> str:
@@ -167,6 +168,7 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 def create_inquilinos_menu_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton("➕ Añadir Inquilino"), KeyboardButton("📋 Listar Inquilinos")],
+        [KeyboardButton("🗓️ Asignar Día de Pago")],
         [KeyboardButton("❌ Desactivar Inquilino"), KeyboardButton("✅ Activar Inquilino")],
         [KeyboardButton("⬅️ Volver al Menú Principal")]
     ]
@@ -257,6 +259,85 @@ async def activate_inquilino_update(update: Update, context: ContextTypes.DEFAUL
 
     await cambiar_estado_inquilino(inquilino_id, True)
     await update.message.reply_text(f"Inquilino '{nombre}' ha sido activado.", reply_markup=create_inquilinos_menu_keyboard())
+    context.user_data.clear()
+    return INQUILINO_MENU
+
+# === Flujo Asignar Día de Pago ===
+
+async def set_dia_pago_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Inicia el flujo para asignar o actualizar el día de pago de un inquilino."""
+    inquilinos = await obtener_inquilinos(activos_only=True)
+    if not inquilinos:
+        await update.message.reply_text(
+            "No hay inquilinos activos. Añade un inquilino primero.",
+            reply_markup=create_inquilinos_menu_keyboard()
+        )
+        return INQUILINO_MENU
+
+    context.user_data['inquilinos_list'] = {i[1]: i[0] for i in inquilinos}
+    keyboard = [[KeyboardButton(i[1])] for i in inquilinos]
+    keyboard.append([KeyboardButton("❌ Cancelar")])
+    
+    await update.message.reply_text(
+        "Selecciona el inquilino al que quieres asignar/editar el día de pago:",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+    return INQUILINO_SET_DIA_PAGO_SELECT
+
+async def set_dia_pago_select_inquilino(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Maneja la selección del inquilino y pide el día de pago."""
+    nombre_inquilino = update.message.text
+    inquilino_id = context.user_data.get('inquilinos_list', {}).get(nombre_inquilino)
+
+    if not inquilino_id:
+        await update.message.reply_text("Selección inválida. Por favor, usa el teclado.", reply_markup=create_inquilinos_menu_keyboard())
+        context.user_data.clear()
+        return INQUILINO_MENU
+
+    context.user_data['selected_inquilino_id'] = inquilino_id
+    context.user_data['selected_inquilino_nombre'] = nombre_inquilino
+    
+    await update.message.reply_text(
+        f"Introduce el día de pago (1-31) para {md(nombre_inquilino)}:",
+        parse_mode=ParseMode.MARKDOWN_V2,
+        reply_markup=create_cancel_keyboard()
+    )
+    return INQUILINO_SET_DIA_PAGO_SAVE
+
+async def set_dia_pago_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Guarda el día de pago para el inquilino seleccionado."""
+    try:
+        dia_pago = int(update.message.text.strip())
+        if not 1 <= dia_pago <= 31:
+            raise ValueError("Día fuera de rango")
+
+        inquilino_id = context.user_data['selected_inquilino_id']
+        nombre_inquilino = context.user_data['selected_inquilino_nombre']
+
+        success = await actualizar_dia_pago_inquilino(inquilino_id, dia_pago)
+
+        if success:
+            await update.message.reply_text(
+                f"✅ Día de pago actualizado a *{dia_pago}* para el inquilino *{md(nombre_inquilino)}*\.",
+                parse_mode=ParseMode.MARKDOWN_V2,
+                reply_markup=create_inquilinos_menu_keyboard()
+            )
+        else:
+            await update.message.reply_text(
+                "❌ Hubo un error y no se pudo actualizar el día de pago.",
+                reply_markup=create_inquilinos_menu_keyboard()
+            )
+
+    except (ValueError, TypeError):
+        await update.message.reply_text(
+            "Entrada inválida. Por favor, introduce un número entre 1 y 31.",
+            reply_markup=create_cancel_keyboard()
+        )
+        return INQUILINO_SET_DIA_PAGO_SAVE
+    except Exception as e:
+        logger.error(f"Error al guardar día de pago: {e}", exc_info=True)
+        await update.message.reply_text("❌ Ocurrió un error inesperado.", reply_markup=create_inquilinos_menu_keyboard())
+
     context.user_data.clear()
     return INQUILINO_MENU
 
@@ -391,9 +472,10 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
             logger.info("No hay recordatorios de pago para enviar hoy.")
             return
 
-        mensaje = "🔔 *Recordatorios de Pago Pendiente* 🔔\\n\\n"
+        mensaje = "🔔 *Recordatorios de Pago Pendiente* 🔔\n\n"
         for nombre in inquilinos_a_notificar:
-            mensaje += f"\\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\\.\n"
+            mensaje += f"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.
+"
         
         await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
         logger.info(f"Recordatorios enviados a {len(inquilinos_a_notificar)} inquilinos.")

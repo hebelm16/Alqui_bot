@@ -17,13 +17,15 @@ from handlers import (
     deshacer_gasto_handler, volver_menu, error_handler, volver_menu_principal,
     gestionar_inquilinos_menu, add_inquilino_prompt, add_inquilino_save, list_inquilinos,
     deactivate_inquilino_prompt, deactivate_inquilino_update, activate_inquilino_prompt,
-    activate_inquilino_update, editar_inicio, editar_mes_actual, editar_pedir_mes,
+    activate_inquilino_update, set_dia_pago_start, set_dia_pago_select_inquilino, set_dia_pago_save,
+    editar_inicio, editar_mes_actual, editar_pedir_mes,
     editar_pedir_anio, editar_listar_transacciones_custom, editar_seleccionar_transaccion,
     editar_ejecutar_borrado,
     MENU, PAGO_SELECT_INQUILINO, PAGO_MONTO, GASTO_MONTO, GASTO_DESC, INFORME_MES, 
     INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR, INQUILINO_MENU, INQUILINO_ADD_NOMBRE,
     INQUILINO_DEACTIVATE_SELECT, INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO,
-    EDITAR_PEDIR_MES, EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO
+    EDITAR_PEDIR_MES, EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO,
+    INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE
 )
 
 # Configuración de logging
@@ -91,6 +93,7 @@ def main() -> None:
             INQUILINO_MENU: [
                 MessageHandler(filters.Regex("^➕ Añadir Inquilino$"), add_inquilino_prompt),
                 MessageHandler(filters.Regex("^📋 Listar Inquilinos$"), list_inquilinos),
+                MessageHandler(filters.Regex("^🗓️ Asignar Día de Pago$"), set_dia_pago_start),
                 MessageHandler(filters.Regex("^❌ Desactivar Inquilino$"), deactivate_inquilino_prompt),
                 MessageHandler(filters.Regex("^✅ Activar Inquilino$"), activate_inquilino_prompt),
                 MessageHandler(filters.Regex("^⬅️ Volver al Menú Principal$"), start),
@@ -98,6 +101,8 @@ def main() -> None:
             INQUILINO_ADD_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), add_inquilino_save)],
             INQUILINO_DEACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), deactivate_inquilino_update)],
             INQUILINO_ACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), activate_inquilino_update)],
+            INQUILINO_SET_DIA_PAGO_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), set_dia_pago_select_inquilino)],
+            INQUILINO_SET_DIA_PAGO_SAVE: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), set_dia_pago_save)],
 
             # Flujo de editar/borrar
             EDITAR_INICIO: [
