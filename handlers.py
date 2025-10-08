@@ -1,6 +1,6 @@
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile
 from telegram.ext import ContextTypes, ConversationHandler
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import logging
 import psycopg2
 from psycopg2.errors import UniqueViolation
@@ -10,7 +10,8 @@ from telegram.helpers import escape_markdown
 from database import (
     registrar_pago, registrar_gasto, obtener_resumen, obtener_informe_mensual,
     deshacer_ultimo_pago, deshacer_ultimo_gasto, crear_inquilino, obtener_inquilinos,
-    cambiar_estado_inquilino, obtener_inquilino_por_id, delete_pago_by_id, delete_gasto_by_id
+    cambiar_estado_inquilino, obtener_inquilino_por_id, delete_pago_by_id, delete_gasto_by_id,
+    obtener_inquilinos_para_recordatorio
 )
 from config import AUTHORIZED_USERS
 import os
@@ -80,7 +81,7 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     except UniqueViolation:
         await update.message.reply_text(
-            f"❌ Ya existe un pago registrado para *{md(detalle)}* en la fecha de hoy\. Si quieres modificarlo, usa la opción 'Deshacer'.",
+            f"❌ Ya existe un pago registrado para *{md(detalle)}* en la fecha de hoy\. Si quieres modificarlo, usa la opción 'Deshacer'\.",
             parse_mode=ParseMode.MARKDOWN_V2,
             reply_markup=create_main_menu_keyboard()
         )
@@ -198,22 +199,10 @@ async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         mensaje = "No hay inquilinos registrados."
     else:
         mensaje = "Lista de Inquilinos:\n"
-        for _, nombre, activo in inquilinos:
+        for _, nombre, activo, dia_pago in inquilinos:
             estado = "✅ Activo" if activo else "❌ Inactivo"
-<<<<<<< HEAD
-<<<<<<< HEAD
             dia_pago_str = f"Día de pago: {dia_pago}" if dia_pago else "Día de pago: Sin asignar"
-<<<<<<< HEAD
-            mensaje += f"\\- {md(nombre)} \\({md(estado)}\\) \\- {md(dia_pago_str)}\n"
-=======
-            mensaje += f"\- {md(nombre)} \({md(estado)}\)\n"
->>>>>>> parent of 4f1a5fd (notifi)
-=======
-            mensaje += f"\- {md(nombre)} \({md(estado)}\)\n"
->>>>>>> parent of 4f1a5fd (notifi)
-=======
             mensaje += f"\- {md(nombre)} \({md(estado)}\) \- {md(dia_pago_str)}\n"
->>>>>>> parent of 0dffa48 (notifica)
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_inquilinos_menu_keyboard())
     return INQUILINO_MENU
@@ -225,7 +214,7 @@ async def deactivate_inquilino_prompt(update: Update, context: ContextTypes.DEFA
         return INQUILINO_MENU
     
     context.user_data['inquilinos_list'] = {i[1]: i[0] for i in inquilinos}
-    keyboard = [[KeyboardButton(nombre)] for _, nombre, _ in inquilinos]
+    keyboard = [[KeyboardButton(i[1])] for i in inquilinos]
     keyboard.append([KeyboardButton("❌ Cancelar")])
     
     await update.message.reply_text("Selecciona el inquilino que quieres desactivar:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
@@ -253,7 +242,7 @@ async def activate_inquilino_prompt(update: Update, context: ContextTypes.DEFAUL
         return INQUILINO_MENU
 
     context.user_data['inquilinos_list'] = {i[1]: i[0] for i in inquilinos_inactivos}
-    keyboard = [[KeyboardButton(nombre)] for _, nombre, _ in inquilinos_inactivos]
+    keyboard = [[KeyboardButton(i[1])] for i in inquilinos_inactivos]
     keyboard.append([KeyboardButton("❌ Cancelar")])
 
     await update.message.reply_text("Selecciona el inquilino que quieres activar:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
@@ -345,19 +334,7 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             mensaje += f"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
 
     context.user_data['transactions_map'] = transactions_map
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)"
-=======
     mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\."
->>>>>>> parent of 4f1a5fd (notifi)
-=======
-    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\."
->>>>>>> parent of 4f1a5fd (notifi)
-=======
-    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\"
->>>>>>> parent of 0dffa48 (notifica)
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_cancel_keyboard())
     return EDITAR_SELECCIONAR_TRANSACCION
@@ -404,40 +381,29 @@ async def editar_ejecutar_borrado(update: Update, context: ContextTypes.DEFAULT_
     context.user_data.clear()
     return MENU
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 # === Tarea Automática de Recordatorios ===
 async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Envía recordatorios de pago para inquilinos cuya fecha de pago se acerca."""
+    """Envía recordatorios de pago a los inquilinos apropiados."""
     chat_id = context.job.chat_id
     try:
-        inquilinos = await obtener_inquilinos(activos_only=True)
-        if not inquilinos:
+        inquilinos_a_notificar = await obtener_inquilinos_para_recordatorio()
+        
+        if not inquilinos_a_notificar:
+            logger.info("No hay recordatorios de pago para enviar hoy.")
             return
 
-        hoy = date.today()
-        fecha_recordatorio = hoy + timedelta(days=2)
-        recordatorios = []
-
-        for _, nombre, _, dia_pago in inquilinos:
-            if dia_pago and dia_pago == fecha_recordatorio.day:
-                # Simplificación: Se notifica si el día coincide, sin importar si ya pagó.
-                # Mejoras futuras: Verificar si ya existe un pago para el mes actual.
-                mensaje = f"🔔 Recordatorio: El pago de *{md(nombre)}* vence en 2 días \(el día {dia_pago} de cada mes\."
-                recordatorios.append(mensaje)
+        mensaje = "🔔 *Recordatorios de Pago Pendiente* 🔔\n\n"
+        for nombre in inquilinos_a_notificar:
+            mensaje += f"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.
+"
         
-        if recordatorios:
-            mensaje_final = "\n\n".join(recordatorios)
-            await context.bot.send_message(chat_id=chat_id, text=mensaje_final, parse_mode=ParseMode.MARKDOWN_V2)
+        await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
+        logger.info(f"Recordatorios enviados a {len(inquilinos_a_notificar)} inquilinos.")
 
     except Exception as e:
         logger.error(f"Error en la tarea de enviar recordatorios: {e}", exc_info=True)
         await context.bot.send_message(chat_id=chat_id, text=f"Ocurrió un error en la tarea de recordatorios: {e}")
 
-=======
->>>>>>> parent of 4f1a5fd (notifi)
-=======
->>>>>>> parent of 4f1a5fd (notifi)
 # === Otros Handlers ===
 async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     temp_file_path = None
@@ -445,10 +411,7 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         resumen_data = await obtener_resumen()
         mensaje = format_summary(resumen_data)
         
-        # Si el mensaje es corto, mostrarlo directamente. Si es largo, enviarlo como archivo.
         if len(mensaje) < 3000:
-            # Usamos un bloque de código para preservar el formato.
-            # El texto dentro de ``` no necesita ser escapado.
             await update.message.reply_text(
                 f"```\n{mensaje}```", 
                 parse_mode=ParseMode.MARKDOWN_V2,
@@ -611,9 +574,15 @@ def _format_transaction_list(title: str, transactions: list, empty_message: str)
 
     message = f"{title}:\n"
     for i, transaction in enumerate(transactions, 1):
-        fecha_dt = datetime.strptime(str(transaction[0]), '%Y-%m-%d').date()
-        description = transaction[1]
-        amount = transaction[2]
+        # Unpack transaction; handle potential differences in structure
+        if len(transaction) == 4: # Assumes (id, date, desc, amount)
+            _, fecha_str, description, amount = transaction
+        elif len(transaction) == 3: # Assumes (date, desc, amount)
+            fecha_str, description, amount = transaction
+        else:
+            continue # Skip malformed transaction data
+
+        fecha_dt = datetime.strptime(str(fecha_str), '%Y-%m-%d').date()
         message += f"{i}. {description}: {format_currency(amount)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
     return message
 
