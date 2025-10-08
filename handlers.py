@@ -1,6 +1,6 @@
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile
 from telegram.ext import ContextTypes, ConversationHandler
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import logging
 import psycopg2
 from psycopg2.errors import UniqueViolation
@@ -10,7 +10,8 @@ from telegram.helpers import escape_markdown
 from database import (
     registrar_pago, registrar_gasto, obtener_resumen, obtener_informe_mensual,
     deshacer_ultimo_pago, deshacer_ultimo_gasto, crear_inquilino, obtener_inquilinos,
-    cambiar_estado_inquilino, obtener_inquilino_por_id, delete_pago_by_id, delete_gasto_by_id
+    cambiar_estado_inquilino, obtener_inquilino_por_id, delete_pago_by_id, delete_gasto_by_id,
+    actualizar_dia_pago_inquilino, obtener_inquilinos_para_recordatorio
 )
 from config import AUTHORIZED_USERS
 import os
@@ -24,8 +25,9 @@ logger = logging.getLogger(__name__)
     INFORME_MES, INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR,
     INQUILINO_MENU, INQUILINO_ADD_NOMBRE, INQUILINO_DEACTIVATE_SELECT,
     INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO, EDITAR_PEDIR_MES,
-    EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO
-) = range(18)
+    EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO,
+    ASIGNAR_DIA_PAGO_SELECT_INQUILINO, ASIGNAR_DIA_PAGO_SELECT_DIA
+) = range(20)
 
 # === Helpers ===
 def format_currency(value: float) -> str:
@@ -167,6 +169,7 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 def create_inquilinos_menu_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton("➕ Añadir Inquilino"), KeyboardButton("📋 Listar Inquilinos")],
+        [KeyboardButton("📅 Asignar Día de Pago")],
         [KeyboardButton("❌ Desactivar Inquilino"), KeyboardButton("✅ Activar Inquilino")],
         [KeyboardButton("⬅️ Volver al Menú Principal")]
     ]
@@ -193,14 +196,16 @@ async def add_inquilino_save(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return INQUILINO_MENU
 
 async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    # Assuming obtener_inquilinos will be modified to return dia_pago
     inquilinos = await obtener_inquilinos(activos_only=False)
     if not inquilinos:
         mensaje = "No hay inquilinos registrados."
     else:
         mensaje = "Lista de Inquilinos:\n"
-        for _, nombre, activo in inquilinos:
+        for _, nombre, activo, dia_pago in inquilinos:
             estado = "✅ Activo" if activo else "❌ Inactivo"
-            mensaje += f"\- {md(nombre)} \({md(estado)}\)\n"
+            dia_pago_str = f"Día de pago: {dia_pago}" if dia_pago else "Día de pago: Sin asignar"
+            mensaje += f"\- {md(nombre)} \({md(estado)}\) \- {md(dia_pago_str)}\n"
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_inquilinos_menu_keyboard())
     return INQUILINO_MENU
@@ -212,7 +217,7 @@ async def deactivate_inquilino_prompt(update: Update, context: ContextTypes.DEFA
         return INQUILINO_MENU
     
     context.user_data['inquilinos_list'] = {i[1]: i[0] for i in inquilinos}
-    keyboard = [[KeyboardButton(nombre)] for _, nombre, _ in inquilinos]
+    keyboard = [[KeyboardButton(inquilino[1])] for inquilino in inquilinos]
     keyboard.append([KeyboardButton("❌ Cancelar")])
     
     await update.message.reply_text("Selecciona el inquilino que quieres desactivar:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
@@ -240,7 +245,7 @@ async def activate_inquilino_prompt(update: Update, context: ContextTypes.DEFAUL
         return INQUILINO_MENU
 
     context.user_data['inquilinos_list'] = {i[1]: i[0] for i in inquilinos_inactivos}
-    keyboard = [[KeyboardButton(nombre)] for _, nombre, _ in inquilinos_inactivos]
+    keyboard = [[KeyboardButton(i[1])] for i in inquilinos_inactivos]
     keyboard.append([KeyboardButton("❌ Cancelar")])
 
     await update.message.reply_text("Selecciona el inquilino que quieres activar:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
@@ -258,6 +263,61 @@ async def activate_inquilino_update(update: Update, context: ContextTypes.DEFAUL
     await update.message.reply_text(f"Inquilino '{nombre}' ha sido activado.", reply_markup=create_inquilinos_menu_keyboard())
     context.user_data.clear()
     return INQUILINO_MENU
+
+# === Flujo Asignar Día de Pago ===
+async def asignar_dia_pago_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    inquilinos = await obtener_inquilinos(activos_only=True)
+    if not inquilinos:
+        await update.message.reply_text("No hay inquilinos activos.", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
+
+    context.user_data['inquilinos_dia_pago_map'] = {i[1]: i[0] for i in inquilinos}
+    keyboard_buttons = []
+    for _, nombre, _, dia_pago in inquilinos:
+        texto_boton = f"{nombre} (Día: {dia_pago or 'N/A'})"
+        keyboard_buttons.append([KeyboardButton(texto_boton)])
+    
+    keyboard_buttons.append([KeyboardButton("❌ Cancelar")])
+    reply_markup = ReplyKeyboardMarkup(keyboard_buttons, resize_keyboard=True)
+    
+    await update.message.reply_text("Selecciona un inquilino para asignarle o cambiarle el día de pago:", reply_markup=reply_markup)
+    return ASIGNAR_DIA_PAGO_SELECT_INQUILINO
+
+async def asignar_dia_pago_select_inquilino(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    # Extraer el nombre del texto del botón, que puede tener '(Día: ...)'
+    nombre_inquilino = update.message.text.split(' (')[0]
+    
+    inquilino_id = context.user_data.get('inquilinos_dia_pago_map', {}).get(nombre_inquilino)
+    if not inquilino_id:
+        await update.message.reply_text("No se pudo encontrar el inquilino. Por favor, intenta de nuevo.", reply_markup=create_inquilinos_menu_keyboard())
+        context.user_data.clear()
+        return INQUILINO_MENU
+
+    context.user_data['selected_inquilino_id'] = inquilino_id
+    context.user_data['selected_inquilino_nombre'] = nombre_inquilino
+
+    await update.message.reply_text(f"Introduce el día del mes (1-31) para el pago de {md(nombre_inquilino)}:", reply_markup=create_cancel_keyboard(), parse_mode=ParseMode.MARKDOWN_V2)
+    return ASIGNAR_DIA_PAGO_SELECT_DIA
+
+async def asignar_dia_pago_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    try:
+        dia_pago = int(update.message.text.strip())
+        if not 1 <= dia_pago <= 31:
+            await update.message.reply_text("Día inválido. Por favor, introduce un número del 1 al 31.")
+            return ASIGNAR_DIA_PAGO_SELECT_DIA
+
+        inquilino_id = context.user_data['selected_inquilino_id']
+        nombre_inquilino = context.user_data['selected_inquilino_nombre']
+
+        await actualizar_dia_pago_inquilino(inquilino_id, dia_pago)
+
+        await update.message.reply_text(f"✅ Se asignó el día de pago {dia_pago} para {md(nombre_inquilino)}.", reply_markup=create_inquilinos_menu_keyboard(), parse_mode=ParseMode.MARKDOWN_V2)
+        context.user_data.clear()
+        return INQUILINO_MENU
+
+    except (ValueError, KeyError):
+        await update.message.reply_text("Entrada inválida. Por favor, introduce un número del 1 al 31.")
+        return ASIGNAR_DIA_PAGO_SELECT_DIA
 
 # === Flujo Editar/Borrar ===
 async def editar_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -332,7 +392,7 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             mensaje += f"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
 
     context.user_data['transactions_map'] = transactions_map
-    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\."
+    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\"
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_cancel_keyboard())
     return EDITAR_SELECCIONAR_TRANSACCION
@@ -378,6 +438,34 @@ async def editar_ejecutar_borrado(update: Update, context: ContextTypes.DEFAULT_
     
     context.user_data.clear()
     return MENU
+
+# === Tarea Automática de Recordatorios ===
+async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Envía recordatorios de pago para inquilinos cuya fecha de pago se acerca."""
+    chat_id = context.job.chat_id
+    try:
+        inquilinos = await obtener_inquilinos(activos_only=True)
+        if not inquilinos:
+            return
+
+        hoy = date.today()
+        fecha_recordatorio = hoy + timedelta(days=2)
+        recordatorios = []
+
+        for _, nombre, _, dia_pago in inquilinos:
+            if dia_pago and dia_pago == fecha_recordatorio.day:
+                # Simplificación: Se notifica si el día coincide, sin importar si ya pagó.
+                # Mejoras futuras: Verificar si ya existe un pago para el mes actual.
+                mensaje = f"🔔 Recordatorio: El pago de *{md(nombre)}* vence en 2 días \(el día {dia_pago} de cada mes\."
+                recordatorios.append(mensaje)
+        
+        if recordatorios:
+            mensaje_final = "\n\n".join(recordatorios)
+            await context.bot.send_message(chat_id=chat_id, text=mensaje_final, parse_mode=ParseMode.MARKDOWN_V2)
+
+    except Exception as e:
+        logger.error(f"Error en la tarea de enviar recordatorios: {e}", exc_info=True)
+        await context.bot.send_message(chat_id=chat_id, text=f"Ocurrió un error en la tarea de recordatorios: {e}")
 
 # === Otros Handlers ===
 async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -545,6 +633,39 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.error(f"Error: {context.error} - causado por {update}", exc_info=True)
     if update and update.effective_message:
         await update.message.reply_text("❌ Ocurrió un error inesperado.", reply_markup=create_main_menu_keyboard())
+
+# === Tarea Automática de Recordatorios ===
+async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE):
+    """Envía recordatorios de pago para inquilinos cuya fecha de pago se acerca."""
+    # Usamos el primer usuario autorizado como destinatario de las notificaciones
+    if not AUTHORIZED_USERS:
+        logger.warning("No hay usuarios autorizados para enviar recordatorios.")
+        return
+    chat_id = AUTHORIZED_USERS[0]
+
+    try:
+        inquilinos_a_notificar = await obtener_inquilinos_para_recordatorio()
+
+        if inquilinos_a_notificar:
+            fecha_recordatorio = date.today() + timedelta(days=2)
+            dia_vencimiento = fecha_recordatorio.day
+
+            mensaje = f"🔔 *Recordatorio de Pagos Próximos* 🔔\n\n"
+            mensaje += f"Los siguientes inquilinos tienen pagos que vencen en 2 días \(el día {dia_vencimiento}\) y aún no han pagado este mes:\n\n"
+            for nombre in inquilinos_a_notificar:
+                mensaje += f"\- {md(nombre)}\n"
+            
+            await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
+            logger.info(f"Recordatorios de pago enviados a {chat_id} para: {', '.join(inquilinos_a_notificar)}")
+
+    except Exception as e:
+        logger.error(f"Error en la tarea de enviar recordatorios: {e}", exc_info=True)
+        # Notificar al admin sobre el error en la tarea
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=f"Ocurrió un error en la tarea de recordatorios: {md(str(e))}")
+        except Exception as send_e:
+            logger.error(f"No se pudo notificar al admin sobre el error en la tarea de recordatorios: {send_e}", exc_info=True)
+
 
 def _format_transaction_list(title: str, transactions: list, empty_message: str) -> str:
     if not transactions:

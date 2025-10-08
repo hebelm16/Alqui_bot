@@ -3,6 +3,7 @@ import aiopg
 import logging
 from urllib.parse import urlparse
 from decimal import Decimal
+from datetime import date, timedelta
 from config import COMMISSION_RATE, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ async def close_pool():
         logger.info("Pool de conexiones cerrado.")
 
 async def inicializar_db():
-    """Crea las tablas de la base de datos si no existen y migra el tipo de dato de monto si es necesario."""
+    """Crea las tablas de la base de datos si no existen y realiza migraciones."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             # Crear tabla de inquilinos
@@ -47,7 +48,7 @@ async def inicializar_db():
                 )
             """)
 
-            # Crear tablas con el tipo de dato correcto
+            # Crear tablas de pagos y gastos
             await cur.execute("""
                 CREATE TABLE IF NOT EXISTS pagos (
                     id SERIAL PRIMARY KEY,
@@ -66,25 +67,22 @@ async def inicializar_db():
                 )
             """)
 
+            # --- Migración para añadir columna dia_pago a inquilinos ---
+            await cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='inquilinos' AND column_name='dia_pago'")
+            if not await cur.fetchone():
+                logger.info("Añadiendo columna 'dia_pago' a la tabla 'inquilinos'...")
+                await cur.execute("ALTER TABLE inquilinos ADD COLUMN dia_pago INTEGER;")
+                logger.info("Columna 'dia_pago' añadida.")
+
             # --- Migración para cambiar REAL a NUMERIC ---
-            # Verificar y alterar la tabla de pagos
-            await cur.execute("""
-                SELECT data_type FROM information_schema.columns
-                WHERE table_name = 'pagos' AND column_name = 'monto';
-            """)
-            result = await cur.fetchone()
-            if result and result[0] == 'real':
+            await cur.execute("SELECT data_type FROM information_schema.columns WHERE table_name = 'pagos' AND column_name = 'monto';")
+            if (result := await cur.fetchone()) and result[0] == 'real':
                 logger.info("Migrando tipo de dato de 'monto' en la tabla 'pagos' de REAL a NUMERIC(10, 2)...")
                 await cur.execute("ALTER TABLE pagos ALTER COLUMN monto TYPE NUMERIC(10, 2);")
                 logger.info("Migración de 'pagos' completada.")
 
-            # Verificar y alterar la tabla de gastos
-            await cur.execute("""
-                SELECT data_type FROM information_schema.columns
-                WHERE table_name = 'gastos' AND column_name = 'monto';
-            """)
-            result = await cur.fetchone()
-            if result and result[0] == 'real':
+            await cur.execute("SELECT data_type FROM information_schema.columns WHERE table_name = 'gastos' AND column_name = 'monto';")
+            if (result := await cur.fetchone()) and result[0] == 'real':
                 logger.info("Migrando tipo de dato de 'monto' en la tabla 'gastos' de REAL a NUMERIC(10, 2)...")
                 await cur.execute("ALTER TABLE gastos ALTER COLUMN monto TYPE NUMERIC(10, 2);")
                 logger.info("Migración de 'gastos' completada.")
@@ -118,12 +116,9 @@ async def deshacer_ultimo_pago() -> tuple:
     async with pool.acquire() as conn:
         async with conn.transaction():
             async with conn.cursor() as cur:
-                # Primero, obtenemos y bloqueamos el último pago
                 await cur.execute("SELECT id, inquilino, monto FROM pagos ORDER BY id DESC LIMIT 1 FOR UPDATE")
-                ultimo_pago = await cur.fetchone()
-                if ultimo_pago:
+                if ultimo_pago := await cur.fetchone():
                     pago_id, inquilino, monto = ultimo_pago
-                    # Ahora, lo eliminamos
                     await cur.execute("DELETE FROM pagos WHERE id = %s", (pago_id,))
                     logger.info(f"Pago con ID {pago_id} eliminado.")
                     return inquilino, monto
@@ -134,12 +129,9 @@ async def deshacer_ultimo_gasto() -> tuple:
     async with pool.acquire() as conn:
         async with conn.transaction():
             async with conn.cursor() as cur:
-                # Primero, obtenemos y bloqueamos el último gasto
                 await cur.execute("SELECT id, descripcion, monto FROM gastos ORDER BY id DESC LIMIT 1 FOR UPDATE")
-                ultimo_gasto = await cur.fetchone()
-                if ultimo_gasto:
+                if ultimo_gasto := await cur.fetchone():
                     gasto_id, descripcion, monto = ultimo_gasto
-                    # Ahora, lo eliminamos
                     await cur.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
                     logger.info(f"Gasto con ID {gasto_id} eliminado.")
                     return descripcion, monto
@@ -151,24 +143,16 @@ async def obtener_resumen() -> dict:
     """Calcula el resumen de ingresos, gastos, comisión y neto."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            # Total Ingresos
             await cur.execute("SELECT SUM(monto) FROM pagos")
             total_pagos = (await cur.fetchone())[0] or Decimal('0.0')
-
-            # Total Gastos
             await cur.execute("SELECT SUM(monto) FROM gastos")
             total_gastos = (await cur.fetchone())[0] or Decimal('0.0')
-
-            # Últimos 3 pagos
             await cur.execute("SELECT fecha, inquilino, monto FROM pagos ORDER BY id DESC LIMIT 3")
             ultimos_pagos = await cur.fetchall()
-
-            # Últimos 3 gastos
             await cur.execute("SELECT fecha, descripcion, monto FROM gastos ORDER BY id DESC LIMIT 3")
             ultimos_gastos = await cur.fetchall()
 
-    commission_rate_decimal = Decimal(str(COMMISSION_RATE))
-    total_comision = total_pagos * commission_rate_decimal
+    total_comision = total_pagos * Decimal(str(COMMISSION_RATE))
     monto_neto = total_pagos - total_comision - total_gastos
 
     return {
@@ -181,27 +165,19 @@ async def obtener_resumen() -> dict:
     }
 
 async def obtener_informe_mensual(mes: int, anio: int) -> dict:
-    """Calcula el informe mensual de ingresos, gastos, comisión y neto para un mes y año específicos."""
+    """Calcula el informe mensual de ingresos, gastos, comisión y neto."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            # Total Ingresos para el mes/año
             await cur.execute("SELECT SUM(monto) FROM pagos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s", (mes, anio))
             total_pagos_mes = (await cur.fetchone())[0] or Decimal('0.0')
-
-            # Total Gastos para el mes/año
             await cur.execute("SELECT SUM(monto) FROM gastos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s", (mes, anio))
             total_gastos_mes = (await cur.fetchone())[0] or Decimal('0.0')
-
-            # Pagos del mes
             await cur.execute("SELECT id, fecha, inquilino, monto FROM pagos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY id ASC", (mes, anio))
             pagos_mes = await cur.fetchall()
-
-            # Gastos del mes
             await cur.execute("SELECT id, fecha, descripcion, monto FROM gastos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY id ASC", (mes, anio))
             gastos_mes = await cur.fetchall()
 
-    commission_rate_decimal = Decimal(str(COMMISSION_RATE))
-    total_comision_mes = total_pagos_mes * commission_rate_decimal
+    total_comision_mes = total_pagos_mes * Decimal(str(COMMISSION_RATE))
     monto_neto_mes = total_pagos_mes - total_comision_mes - total_gastos_mes
 
     return {
@@ -225,8 +201,8 @@ async def crear_inquilino(nombre: str) -> int:
             return inquilino_id[0]
 
 async def obtener_inquilinos(activos_only: bool = True) -> list:
-    """Obtiene una lista de inquilinos. Por defecto, solo los activos."""
-    query = "SELECT id, nombre, activo FROM inquilinos"
+    """Obtiene una lista de inquilinos con su día de pago. Por defecto, solo los activos."""
+    query = "SELECT id, nombre, activo, dia_pago FROM inquilinos"
     if activos_only:
         query += " WHERE activo = TRUE"
     query += " ORDER BY nombre ASC"
@@ -240,7 +216,7 @@ async def obtener_inquilino_por_id(inquilino_id: int) -> tuple:
     """Obtiene un inquilino por su ID."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            await cur.execute("SELECT id, nombre, activo FROM inquilinos WHERE id = %s", (inquilino_id,))
+            await cur.execute("SELECT id, nombre, activo, dia_pago FROM inquilinos WHERE id = %s", (inquilino_id,))
             return await cur.fetchone()
 
 async def cambiar_estado_inquilino(inquilino_id: int, estado: bool) -> bool:
@@ -249,6 +225,16 @@ async def cambiar_estado_inquilino(inquilino_id: int, estado: bool) -> bool:
         async with conn.cursor() as cur:
             await cur.execute("UPDATE inquilinos SET activo = %s WHERE id = %s", (estado, inquilino_id))
             return cur.rowcount > 0
+
+async def actualizar_dia_pago_inquilino(inquilino_id: int, dia_pago: int) -> bool:
+    """Actualiza el día de pago para un inquilino específico."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("UPDATE inquilinos SET dia_pago = %s WHERE id = %s", (dia_pago, inquilino_id))
+            if cur.rowcount > 0:
+                logger.info(f"Día de pago actualizado para inquilino ID {inquilino_id}.")
+                return True
+            return False
 
 # --- Funciones para Borrar Específicos ---
 
@@ -271,3 +257,42 @@ async def delete_gasto_by_id(gasto_id: int) -> bool:
                 logger.info(f"Gasto con ID {gasto_id} eliminado.")
                 return True
             return False
+
+async def obtener_inquilinos_para_recordatorio() -> list:
+    """
+    Obtiene una lista de nombres de inquilinos activos que tienen un pago venciéndose en 2 días
+    y que aún no han pagado en el mes actual.
+    """
+    inquilinos_a_notificar = []
+    hoy = date.today()
+    fecha_recordatorio = hoy + timedelta(days=2)
+    dia_recordatorio = fecha_recordatorio.day
+    mes_actual = hoy.month
+    anio_actual = hoy.year
+
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            # 1. Encontrar inquilinos activos cuyo día de pago es el día del recordatorio
+            await cur.execute(
+                "SELECT nombre FROM inquilinos WHERE activo = TRUE AND dia_pago = %s",
+                (dia_recordatorio,)
+            )
+            inquilinos_con_vencimiento = await cur.fetchall()
+
+            if not inquilinos_con_vencimiento:
+                return []
+
+            # 2. Para cada inquilino, verificar si ya pagó este mes
+            for inquilino in inquilinos_con_vencimiento:
+                nombre_inquilino = inquilino[0]
+                await cur.execute("""
+                    SELECT 1 FROM pagos
+                    WHERE inquilino = %s
+                    AND EXTRACT(MONTH FROM fecha) = %s
+                    AND EXTRACT(YEAR FROM fecha) = %s
+                """, (nombre_inquilino, mes_actual, anio_actual))
+
+                if not await cur.fetchone():
+                    inquilinos_a_notificar.append(nombre_inquilino)
+
+    return inquilinos_a_notificar

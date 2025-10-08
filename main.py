@@ -1,7 +1,8 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
 import logging
+from datetime import time
 
-from config import BOT_TOKEN
+from config import BOT_TOKEN, AUTHORIZED_USERS
 from database import inicializar_db, init_pool, close_pool
 from handlers import (
     start, pago_inicio, pago_select_inquilino, pago_monto, gasto_inicio, gasto_monto,
@@ -12,11 +13,13 @@ from handlers import (
     deactivate_inquilino_prompt, deactivate_inquilino_update, activate_inquilino_prompt,
     activate_inquilino_update, editar_inicio, editar_mes_actual, editar_pedir_mes,
     editar_pedir_anio, editar_listar_transacciones_custom, editar_seleccionar_transaccion,
-    editar_ejecutar_borrado,
+    editar_ejecutar_borrado, asignar_dia_pago_inicio, asignar_dia_pago_select_inquilino,
+    asignar_dia_pago_save, enviar_recordatorios_pago,
     MENU, PAGO_SELECT_INQUILINO, PAGO_MONTO, GASTO_MONTO, GASTO_DESC, INFORME_MES, 
     INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR, INQUILINO_MENU, INQUILINO_ADD_NOMBRE,
     INQUILINO_DEACTIVATE_SELECT, INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO,
-    EDITAR_PEDIR_MES, EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO
+    EDITAR_PEDIR_MES, EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO,
+    ASIGNAR_DIA_PAGO_SELECT_INQUILINO, ASIGNAR_DIA_PAGO_SELECT_DIA
 )
 
 # Configuración de logging
@@ -36,6 +39,18 @@ def main() -> None:
         await init_pool()
         await inicializar_db()
         logging.info("Pool de DB y tablas inicializados.")
+
+        # Programar la tarea de recordatorios
+        job_queue = application.job_queue
+        if AUTHORIZED_USERS:
+            chat_id = AUTHORIZED_USERS[0]
+            job_queue.run_daily(
+                enviar_recordatorios_pago,
+                time=time(hour=9, minute=0), # 9:00 AM hora del servidor
+                chat_id=chat_id,
+                name="recordatorios_diarios"
+            )
+            logging.info(f"Tarea de recordatorios programada para las 9:00 AM para el chat_id {chat_id}")
 
     app = (
         Application.builder()
@@ -84,6 +99,7 @@ def main() -> None:
             INQUILINO_MENU: [
                 MessageHandler(filters.Regex("^➕ Añadir Inquilino$"), add_inquilino_prompt),
                 MessageHandler(filters.Regex("^📋 Listar Inquilinos$"), list_inquilinos),
+                MessageHandler(filters.Regex("^📅 Asignar Día de Pago$"), asignar_dia_pago_inicio),
                 MessageHandler(filters.Regex("^❌ Desactivar Inquilino$"), deactivate_inquilino_prompt),
                 MessageHandler(filters.Regex("^✅ Activar Inquilino$"), activate_inquilino_prompt),
                 MessageHandler(filters.Regex("^⬅️ Volver al Menú Principal$"), start),
@@ -91,6 +107,8 @@ def main() -> None:
             INQUILINO_ADD_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), add_inquilino_save)],
             INQUILINO_DEACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), deactivate_inquilino_update)],
             INQUILINO_ACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), activate_inquilino_update)],
+            ASIGNAR_DIA_PAGO_SELECT_INQUILINO: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), asignar_dia_pago_select_inquilino)],
+            ASIGNAR_DIA_PAGO_SELECT_DIA: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), asignar_dia_pago_save)],
 
             # Flujo de editar/borrar
             EDITAR_INICIO: [
