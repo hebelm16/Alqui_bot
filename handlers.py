@@ -29,7 +29,11 @@ logger = logging.getLogger(__name__)
 
 # === Helpers ===
 def format_currency(value: float) -> str:
-    return f"RD${value:,.2f}"
+    try:
+        # Use non-locale-dependent formatting to avoid thousands separators and potential parentheses.
+        return f"RD${Decimal(value):.2f}"
+    except (InvalidOperation, TypeError):
+        return "RD$0.00"
 
 def md(text: str) -> str:
     return escape_markdown(str(text), version=2)
