@@ -16,6 +16,11 @@ async def init_pool(_=None):
 
     dsn = None
     if database_url:
+        # Log para depuración
+        from urllib.parse import urlparse
+        parsed_url = urlparse(database_url)
+        logger.info(f"Conectando a la base de datos con: Usuario='{parsed_url.username}', Host='{parsed_url.hostname}', Puerto='{parsed_url.port}', DB='{parsed_url.path[1:]}'")
+        
         # asyncpg puede usar la URL directamente
         dsn = database_url
     else:
