@@ -13,17 +13,16 @@ pool = None
 async def init_pool(_=None):
     """Inicializa el pool de conexiones a la base de datos."""
     global pool
-    # Priorizar DATABASE_PUBLIC_URL para desarrollo local
-    database_url = os.getenv("DATABASE_PUBLIC_URL")
-    if not database_url:
-        # Usar DATABASE_URL para el entorno de producción en Railway
-        database_url = os.getenv("DATABASE_URL")
+    # Usar DATABASE_URL para el entorno de producción en Railway
+    database_url = os.getenv("DATABASE_URL")
 
     if database_url:
+        # Parse the database URL
         url = urlparse(database_url)
         dsn = f"dbname={url.path[1:]} user={url.username} password={url.password} host={url.hostname} port={url.port}"
     else:
-        # Fallback a variables de entorno individuales si no hay URL
+        # Fallback a variables de entorno individuales si no hay URL (para desarrollo local)
+        logger.info("DATABASE_URL no encontrada. Usando variables de entorno individuales.")
         dsn = f"dbname={DB_NAME} user={DB_USER} password={DB_PASSWORD} host={DB_HOST} port={DB_PORT}"
 
     try:
