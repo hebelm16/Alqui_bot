@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 # === Helpers ===
 def format_currency(value: float) -> str:
     try:
-        # Use non-locale-dependent formatting to avoid thousands separators and potential parentheses.
         return f"RD${Decimal(value):.2f}"
     except (InvalidOperation, TypeError):
         return "RD$0.00"
@@ -75,7 +74,7 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 f"💸 Monto: {md(format_currency(monto))}"
             )
         else:
-            return # No debería ocurrir
+            return
 
         await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())
 
@@ -202,7 +201,7 @@ async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         for _, nombre, activo, dia_pago in inquilinos:
             estado = "✅ Activo" if activo else "❌ Inactivo"
             dia_pago_str = f"Día de pago: {dia_pago}" if dia_pago else "Día de pago: Sin asignar"
-            mensaje += f"\- {md(nombre)} \({md(estado)}\) \- {md(dia_pago_str)}\n"
+            mensaje += f"\\- {md(nombre)} \\({md(estado)}\) \\- {md(dia_pago_str)}\n"
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_inquilinos_menu_keyboard())
     return INQUILINO_MENU
@@ -394,7 +393,7 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
 
         mensaje = "🔔 *Recordatorios de Pago Pendiente* 🔔\n\n"
         for nombre in inquilinos_a_notificar:
-            mensaje += f"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.
+            mensaje += f"\\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.
 "
         
         await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
@@ -574,13 +573,12 @@ def _format_transaction_list(title: str, transactions: list, empty_message: str)
 
     message = f"{title}:\n"
     for i, transaction in enumerate(transactions, 1):
-        # Unpack transaction; handle potential differences in structure
-        if len(transaction) == 4: # Assumes (id, date, desc, amount)
+        if len(transaction) == 4:
             _, fecha_str, description, amount = transaction
-        elif len(transaction) == 3: # Assumes (date, desc, amount)
+        elif len(transaction) == 3:
             fecha_str, description, amount = transaction
         else:
-            continue # Skip malformed transaction data
+            continue
 
         fecha_dt = datetime.strptime(str(fecha_str), '%Y-%m-%d').date()
         message += f"{i}. {description}: {format_currency(amount)} ({fecha_dt.strftime('%d/%m/%Y')})\n"
