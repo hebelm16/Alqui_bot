@@ -31,3 +31,4 @@ DB_PASSWORD = os.getenv("PGPASSWORD")
 # === Configuración de Negocio ===
 # Tasa de comisión sobre los ingresos (ej: 0.05 para 5%)
 COMMISSION_RATE = 0.05
+#
