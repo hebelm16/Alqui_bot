@@ -385,14 +385,27 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     try:
         resumen_data = await obtener_resumen()
         mensaje = format_summary(resumen_data)
+        
+        # Si el mensaje es corto, mostrarlo directamente. Si es largo, enviarlo como archivo.
+        if len(mensaje) < 3000:
+            # Usamos un bloque de código para preservar el formato.
+            # El texto dentro de ``` no necesita ser escapado.
+            await update.message.reply_text(
+                f"```\n{mensaje}```", 
+                parse_mode=ParseMode.MARKDOWN_V2,
+                reply_markup=create_main_menu_keyboard()
+            )
+        else:
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8', suffix='.txt') as temp_file:
+                temp_file.write(mensaje)
+                temp_file_path = temp_file.name
 
-        with tempfile.NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8', suffix='.txt') as temp_file:
-            temp_file.write(mensaje)
-            temp_file_path = temp_file.name
-
-        with open(temp_file_path, 'rb') as f:
-            await update.message.reply_document(document=InputFile(f, filename='resumen_general.txt'),
-                                                caption='Aquí está tu resumen general.')
+            with open(temp_file_path, 'rb') as f:
+                await update.message.reply_document(
+                    document=InputFile(f, filename='resumen_general.txt'),
+                    caption='El resumen es muy largo, por lo que se ha enviado como un archivo.',
+                    reply_markup=create_main_menu_keyboard()
+                )
     except psycopg2.Error as e:
         logger.error(f"Error de base de datos al generar resumen: {e}", exc_info=True)
         await update.message.reply_text("❌ Hubo un error con la base de datos al generar el resumen.", reply_markup=create_main_menu_keyboard())
