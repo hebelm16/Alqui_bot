@@ -1,6 +1,12 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
 import logging
 from datetime import time
+import asyncio
+import os
+
+# En Windows, se requiere una política de eventos específica para aiopg
+if os.name == 'nt':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from config import BOT_TOKEN, AUTHORIZED_USERS
 from database import inicializar_db, init_pool, close_pool

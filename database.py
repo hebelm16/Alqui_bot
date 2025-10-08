@@ -27,7 +27,7 @@ async def init_pool():
         logger.error(f"Error al inicializar el pool de conexiones: {e}")
         raise
 
-async def close_pool():
+async def close_pool(_=None):
     """Cierra el pool de conexiones."""
     global pool
     if pool:
