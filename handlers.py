@@ -10,7 +10,7 @@ from telegram.helpers import escape_markdown
 from database import (
     registrar_pago, registrar_gasto, obtener_resumen, obtener_informe_mensual,
     deshacer_ultimo_pago, deshacer_ultimo_gasto, crear_inquilino, obtener_inquilinos,
-    cambiar_estado_inquilino, obtener_inquilino_por_id
+    cambiar_estado_inquilino, obtener_inquilino_por_id, delete_pago_by_id, delete_gasto_by_id
 )
 from config import AUTHORIZED_USERS
 import os
@@ -23,8 +23,9 @@ logger = logging.getLogger(__name__)
     MENU, PAGO_SELECT_INQUILINO, PAGO_MONTO, GASTO_MONTO, GASTO_DESC,
     INFORME_MES, INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR,
     INQUILINO_MENU, INQUILINO_ADD_NOMBRE, INQUILINO_DEACTIVATE_SELECT,
-    INQUILINO_ACTIVATE_SELECT
-) = range(13)
+    INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO, EDITAR_PEDIR_MES,
+    EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO
+) = range(18)
 
 # === Helpers ===
 def format_currency(value: float) -> str:
@@ -36,7 +37,7 @@ def md(text: str) -> str:
 def create_main_menu_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton("📥 Registrar Pago"), KeyboardButton("💸 Registrar Gasto")],
-        [KeyboardButton("👤 Gestionar Inquilinos")],
+        [KeyboardButton("👤 Gestionar Inquilinos"), KeyboardButton("✏️ Editar/Borrar")],
         [KeyboardButton("📊 Ver Resumen"), KeyboardButton("📈 Generar Informe")],
         [KeyboardButton("🗑️ Deshacer")]
     ]
@@ -253,6 +254,124 @@ async def activate_inquilino_update(update: Update, context: ContextTypes.DEFAUL
     await update.message.reply_text(f"Inquilino '{nombre}' ha sido activado.", reply_markup=create_inquilinos_menu_keyboard())
     context.user_data.clear()
     return INQUILINO_MENU
+
+# === Flujo Editar/Borrar ===
+async def editar_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    keyboard = [
+        [KeyboardButton("Mes Actual")],
+        [KeyboardButton("Elegir Mes y Año")],
+        [KeyboardButton("❌ Cancelar")]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    await update.message.reply_text("¿De qué período quieres editar o borrar una transacción?", reply_markup=reply_markup)
+    return EDITAR_INICIO
+
+async def editar_mes_actual(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    hoy = date.today()
+    return await editar_listar_transacciones(update, context, hoy.month, hoy.year)
+
+async def editar_pedir_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Por favor, introduce el número del mes (1-12):", reply_markup=create_cancel_keyboard())
+    return EDITAR_PEDIR_ANIO
+
+async def editar_pedir_anio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    try:
+        mes = int(update.message.text.strip())
+        if not 1 <= mes <= 12:
+            await update.message.reply_text("Mes inválido. Por favor, introduce un número del 1 al 12.")
+            return EDITAR_PEDIR_ANIO
+        context.user_data['edit_month'] = mes
+        await update.message.reply_text("Ahora, introduce el año (ej: 2023):", reply_markup=create_cancel_keyboard())
+        return EDITAR_PEDIR_MES
+    except ValueError:
+        await update.message.reply_text("Entrada inválida. Por favor, introduce un número para el mes.")
+        return EDITAR_PEDIR_ANIO
+
+async def editar_listar_transacciones_custom(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    try:
+        anio = int(update.message.text.strip())
+        if not 1900 < anio < 2100:
+            await update.message.reply_text("Año inválido. Por favor, introduce un año válido (ej: 2023).")
+            return EDITAR_PEDIR_MES
+
+        mes = context.user_data.get('edit_month')
+        return await editar_listar_transacciones(update, context, mes, anio)
+    except (ValueError, KeyError):
+        await update.message.reply_text("Año inválido. Por favor, introduce un número para el año (ej: 2023).")
+        return EDITAR_PEDIR_MES
+
+async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFAULT_TYPE, mes: int, anio: int) -> int:
+    report_data = await obtener_informe_mensual(mes, anio)
+    pagos = report_data.get('pagos_mes', [])
+    gastos = report_data.get('gastos_mes', [])
+
+    if not pagos and not gastos:
+        await update.message.reply_text("No hay transacciones registradas para este período.", reply_markup=create_main_menu_keyboard())
+        return MENU
+
+    mensaje = f"Transacciones para {mes}/{anio}:\n\n"
+    transactions_map = {}
+    
+    if pagos:
+        mensaje += "*Pagos*\n"
+        for i, (p_id, p_fecha, p_inquilino, p_monto) in enumerate(pagos, 1):
+            code = f"P{i}"
+            transactions_map[code] = {"id": p_id, "tipo": "pago"}
+            mensaje += f"`{code}`: {md(p_inquilino)} \- {md(format_currency(p_monto))} el {p_fecha.strftime('%d/%m')}\n"
+    
+    if gastos:
+        mensaje += "\n*Gastos*\n"
+        for i, (g_id, g_fecha, g_desc, g_monto) in enumerate(gastos, 1):
+            code = f"G{i}"
+            transactions_map[code] = {"id": g_id, "tipo": "gasto"}
+            mensaje += f"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
+
+    context.user_data['transactions_map'] = transactions_map
+    mensaje += "\nEscribe el código de la transacción que quieres borrar (ej: P1 o G2)."
+    
+    await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_cancel_keyboard())
+    return EDITAR_SELECCIONAR_TRANSACCION
+
+async def editar_seleccionar_transaccion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    code = update.message.text.upper().strip()
+    transactions_map = context.user_data.get('transactions_map', {})
+
+    if code not in transactions_map:
+        await update.message.reply_text("Código inválido. Por favor, introduce un código de la lista (ej: P1).", reply_markup=create_cancel_keyboard())
+        return EDITAR_SELECCIONAR_TRANSACCION
+
+    transaction = transactions_map[code]
+    context.user_data['selected_transaction'] = transaction
+
+    keyboard = [[KeyboardButton("Sí, borrar")], [KeyboardButton("No, cancelar")]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    await update.message.reply_text(f"¿Estás seguro de que quieres borrar la transacción `{md(code)}`? Esta acción no se puede deshacer.", parse_mode=ParseMode.MARKDOWN_V2, reply_markup=reply_markup)
+    return EDITAR_CONFIRMAR_BORRADO
+
+async def editar_ejecutar_borrado(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text != "Sí, borrar":
+        await update.message.reply_text("Borrado cancelado.", reply_markup=create_main_menu_keyboard())
+        context.user_data.clear()
+        return MENU
+
+    transaction = context.user_data.get('selected_transaction')
+    if not transaction:
+        await update.message.reply_text("Error, no se encontró la transacción seleccionada. Volviendo al menú.", reply_markup=create_main_menu_keyboard())
+        context.user_data.clear()
+        return MENU
+
+    success = False
+    if transaction['tipo'] == 'pago':
+        success = await delete_pago_by_id(transaction['id'])
+    elif transaction['tipo'] == 'gasto':
+        success = await delete_gasto_by_id(transaction['id'])
+
+    if success:
+        await update.message.reply_text("✅ Transacción borrada correctamente.", reply_markup=create_main_menu_keyboard())
+    else:
+        await update.message.reply_text("❌ No se pudo borrar la transacción.", reply_markup=create_main_menu_keyboard())
+    
+    context.user_data.clear()
+    return MENU
 
 # === Otros Handlers ===
 async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

@@ -193,11 +193,11 @@ async def obtener_informe_mensual(mes: int, anio: int) -> dict:
             total_gastos_mes = (await cur.fetchone())[0] or Decimal('0.0')
 
             # Pagos del mes
-            await cur.execute("SELECT fecha, inquilino, monto FROM pagos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY id ASC", (mes, anio))
+            await cur.execute("SELECT id, fecha, inquilino, monto FROM pagos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY id ASC", (mes, anio))
             pagos_mes = await cur.fetchall()
 
             # Gastos del mes
-            await cur.execute("SELECT fecha, descripcion, monto FROM gastos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY id ASC", (mes, anio))
+            await cur.execute("SELECT id, fecha, descripcion, monto FROM gastos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY id ASC", (mes, anio))
             gastos_mes = await cur.fetchall()
 
     commission_rate_decimal = Decimal(str(COMMISSION_RATE))
@@ -249,3 +249,25 @@ async def cambiar_estado_inquilino(inquilino_id: int, estado: bool) -> bool:
         async with conn.cursor() as cur:
             await cur.execute("UPDATE inquilinos SET activo = %s WHERE id = %s", (estado, inquilino_id))
             return cur.rowcount > 0
+
+# --- Funciones para Borrar Específicos ---
+
+async def delete_pago_by_id(pago_id: int) -> bool:
+    """Elimina un pago específico por su ID."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("DELETE FROM pagos WHERE id = %s", (pago_id,))
+            if cur.rowcount > 0:
+                logger.info(f"Pago con ID {pago_id} eliminado.")
+                return True
+            return False
+
+async def delete_gasto_by_id(gasto_id: int) -> bool:
+    """Elimina un gasto específico por su ID."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
+            if cur.rowcount > 0:
+                logger.info(f"Gasto con ID {gasto_id} eliminado.")
+                return True
+            return False

@@ -10,10 +10,13 @@ from handlers import (
     deshacer_gasto_handler, volver_menu, error_handler, volver_menu_principal,
     gestionar_inquilinos_menu, add_inquilino_prompt, add_inquilino_save, list_inquilinos,
     deactivate_inquilino_prompt, deactivate_inquilino_update, activate_inquilino_prompt,
-    activate_inquilino_update,
+    activate_inquilino_update, editar_inicio, editar_mes_actual, editar_pedir_mes,
+    editar_pedir_anio, editar_listar_transacciones_custom, editar_seleccionar_transaccion,
+    editar_ejecutar_borrado,
     MENU, PAGO_SELECT_INQUILINO, PAGO_MONTO, GASTO_MONTO, GASTO_DESC, INFORME_MES, 
     INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR, INQUILINO_MENU, INQUILINO_ADD_NOMBRE,
-    INQUILINO_DEACTIVATE_SELECT, INQUILINO_ACTIVATE_SELECT
+    INQUILINO_DEACTIVATE_SELECT, INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO,
+    EDITAR_PEDIR_MES, EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO
 )
 
 # Configuración de logging
@@ -49,19 +52,20 @@ def main() -> None:
                 MessageHandler(filters.Regex("^📥 Registrar Pago$"), pago_inicio),
                 MessageHandler(filters.Regex("^💸 Registrar Gasto$"), gasto_inicio),
                 MessageHandler(filters.Regex("^👤 Gestionar Inquilinos$"), gestionar_inquilinos_menu),
+                MessageHandler(filters.Regex("^✏️ Editar/Borrar$"), editar_inicio),
                 MessageHandler(filters.Regex("^📊 Ver Resumen$"), ver_resumen),
                 MessageHandler(filters.Regex("^📈 Generar Informe$"), informe_inicio),
                 MessageHandler(filters.Regex("^🗑️ Deshacer$"), deshacer_menu),
             ],
-            # Flujo de pago actualizado
+            # Flujo de pago
             PAGO_SELECT_INQUILINO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_select_inquilino)],
             PAGO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_monto)],
             
-            # Flujo de gasto (sin cambios)
+            # Flujo de gasto
             GASTO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_monto)],
             GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_desc)],
 
-            # Flujo de informes (sin cambios)
+            # Flujo de informes
             INFORME_MES: [
                 MessageHandler(filters.Regex("^Informe Mes Actual$"), informe_mes_actual),
                 MessageHandler(filters.Regex("^Elegir Mes y Año$"), informe_pedir_mes),
@@ -69,7 +73,7 @@ def main() -> None:
             INFORME_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, informe_pedir_anio)],
             INFORME_GENERAR: [MessageHandler(filters.TEXT & ~filters.COMMAND, generar_informe_mensual_custom)],
 
-            # Flujo de deshacer (sin cambios)
+            # Flujo de deshacer
             DESHACER_MENU: [
                 MessageHandler(filters.Regex("^🗑️ Deshacer Último Pago$"), deshacer_pago_handler),
                 MessageHandler(filters.Regex("^🗑️ Deshacer Último Gasto$"), deshacer_gasto_handler),
@@ -87,11 +91,22 @@ def main() -> None:
             INQUILINO_ADD_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_inquilino_save)],
             INQUILINO_DEACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, deactivate_inquilino_update)],
             INQUILINO_ACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, activate_inquilino_update)],
+
+            # Flujo de editar/borrar
+            EDITAR_INICIO: [
+                MessageHandler(filters.Regex("^Mes Actual$"), editar_mes_actual),
+                MessageHandler(filters.Regex("^Elegir Mes y Año$"), editar_pedir_mes),
+            ],
+            EDITAR_PEDIR_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_pedir_anio)],
+            EDITAR_PEDIR_MES: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_listar_transacciones_custom)],
+            EDITAR_SELECCIONAR_TRANSACCION: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_seleccionar_transaccion)],
+            EDITAR_CONFIRMAR_BORRADO: [MessageHandler(filters.Regex("^Sí, borrar$"), editar_ejecutar_borrado)],
         },
         fallbacks=[
             CommandHandler("start", start),
             CommandHandler("cancel", volver_menu),
             MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
+            MessageHandler(filters.Regex("^No, cancelar$"), volver_menu),
         ]
     )
 
