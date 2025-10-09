@@ -299,7 +299,7 @@ async def set_dia_pago_select_inquilino(update: Update, context: ContextTypes.DE
     context.user_data['selected_inquilino_nombre'] = nombre_inquilino
     
     await update.message.reply_text(
-        f"Introduce el día de pago (1-31) para {md(nombre_inquilino)}:",
+        f"Introduce el día de pago \(1-31\) para {md(nombre_inquilino)}:",
         parse_mode=ParseMode.MARKDOWN_V2,
         reply_markup=create_cancel_keyboard()
     )
