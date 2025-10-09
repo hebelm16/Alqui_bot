@@ -8,7 +8,7 @@ import os
 if os.name == 'nt':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from config import BOT_TOKEN
+from config import BOT_TOKEN, AUTHORIZED_USERS
 from database import inicializar_db, init_pool, close_pool
 from handlers import (
     start, pago_inicio, pago_select_inquilino, pago_monto, gasto_inicio, gasto_monto,
@@ -20,7 +20,7 @@ from handlers import (
     activate_inquilino_update, set_dia_pago_start, set_dia_pago_select_inquilino, set_dia_pago_save,
     editar_inicio, editar_mes_actual, editar_pedir_mes,
     editar_pedir_anio, editar_listar_transacciones_custom, editar_seleccionar_transaccion,
-    editar_ejecutar_borrado,
+    editar_ejecutar_borrado, enviar_recordatorios_pago,
     MENU, PAGO_SELECT_INQUILINO, PAGO_MONTO, GASTO_MONTO, GASTO_DESC, INFORME_MES, 
     INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR, INQUILINO_MENU, INQUILINO_ADD_NOMBRE,
     INQUILINO_DEACTIVATE_SELECT, INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO,
@@ -124,6 +124,17 @@ def main() -> None:
 
     app.add_handler(conv_handler)
     app.add_error_handler(error_handler)
+
+    # Programar la tarea de recordatorios diarios
+    job_queue = app.job_queue
+    if job_queue:
+        job_queue.run_daily(
+            enviar_recordatorios_pago,
+            time=time(hour=13, minute=0, second=0),  # 9:00 AM en Santo Domingo (UTC-4)
+            chat_id=AUTHORIZED_USERS[0],
+            name="recordatorio_pago_diario"
+        )
+        logging.info("Tarea de recordatorios de pago programada diariamente a las 13:00 UTC.")
 
     print("Bot iniciado correctamente! Presiona Ctrl+C para detener.")
     

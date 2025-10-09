@@ -1,2 +1,16 @@
+# Credentials and environment variables
 creds.json
 .env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+
+# Log files
+*.log
+
+# Pytest cache
+.pytest_cache/
