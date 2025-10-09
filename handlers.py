@@ -415,7 +415,7 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             mensaje += f"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
 
     context.user_data['transactions_map'] = transactions_map
-    mensaje += "\nEscribe el código de la transacción que quieres borrar (ej: P1 o G2)."
+    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\."
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_cancel_keyboard())
     return EDITAR_SELECCIONAR_TRANSACCION
