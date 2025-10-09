@@ -462,7 +462,7 @@ async def editar_ejecutar_borrado(update: Update, context: ContextTypes.DEFAULT_
     context.user_data.clear()
     return MENU
 
-# === Tarea Automática de Recordatorios ===
+# === Tareas Automática de Recordatorios ===
 async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = getattr(getattr(context, "job", None), "chat_id", None)
     if chat_id is None:
