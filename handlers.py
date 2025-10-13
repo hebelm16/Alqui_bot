@@ -81,7 +81,7 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     except UniqueViolation:
         await update.message.reply_text(
-            f"❌ Ya existe un pago registrado para *{md(detalle)}* en la fecha de hoy\. Si quieres modificarlo, usa la opción 'Deshacer'\.",
+            rf"❌ Ya existe un pago registrado para *{md(detalle)}* en la fecha de hoy\. Si quieres modificarlo, usa la opción 'Deshacer'\.",
             parse_mode=ParseMode.MARKDOWN_V2,
             reply_markup=create_main_menu_keyboard()
         )
@@ -204,7 +204,7 @@ async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         for _, nombre, activo, dia_pago in inquilinos:
             estado = "✅ Activo" if activo else "❌ Inactivo"
             dia_pago_str = f"Día de pago: {dia_pago}" if dia_pago else "Día de pago: Sin asignar"
-            mensaje += f"\- {md(nombre)} \({md(estado)}\) \- {md(dia_pago_str)}\n"
+            mensaje += rf"\- {md(nombre)} \({md(estado)}\) \- {md(dia_pago_str)}\n"
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_inquilinos_menu_keyboard())
     return INQUILINO_MENU
@@ -299,7 +299,7 @@ async def set_dia_pago_select_inquilino(update: Update, context: ContextTypes.DE
     context.user_data['selected_inquilino_nombre'] = nombre_inquilino
     
     await update.message.reply_text(
-        f"Introduce el día de pago \(1\-31\) para {md(nombre_inquilino)}:",
+        rf"Introduce el día de pago \(1-31\) para {md(nombre_inquilino)}:",
         parse_mode=ParseMode.MARKDOWN_V2,
         reply_markup=create_cancel_keyboard()
     )
@@ -319,7 +319,7 @@ async def set_dia_pago_save(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
         if success:
             await update.message.reply_text(
-                f"✅ Día de pago actualizado a *{dia_pago}* para el inquilino *{md(nombre_inquilino)}*\.",
+                rf"✅ Día de pago actualizado a *{dia_pago}* para el inquilino *{md(nombre_inquilino)}*\.",
                 parse_mode=ParseMode.MARKDOWN_V2,
                 reply_markup=create_inquilinos_menu_keyboard()
             )
@@ -404,7 +404,7 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             code = f"P{i}"
             transactions_map[code] = {"id": p_id, "tipo": "pago"}
             p_fecha = p_fecha_str if hasattr(p_fecha_str, 'strftime') else datetime.strptime(str(p_fecha_str), '%Y-%m-%d').date()
-            mensaje += f"`{code}`: {md(p_inquilino)} \- {md(format_currency(p_monto))} el {p_fecha.strftime('%d/%m')}\n"
+            mensaje += rf"`{code}`: {md(p_inquilino)} \- {md(format_currency(p_monto))} el {p_fecha.strftime('%d/%m')}\n"
     
     if gastos:
         mensaje += "\n*Gastos*\n"
@@ -412,10 +412,10 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             code = f"G{i}"
             transactions_map[code] = {"id": g_id, "tipo": "gasto"}
             g_fecha = g_fecha_str if hasattr(g_fecha_str, 'strftime') else datetime.strptime(str(g_fecha_str), '%Y-%m-%d').date()
-            mensaje += f"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
+            mensaje += rf"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
 
     context.user_data['transactions_map'] = transactions_map
-    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)"
+    mensaje += r"\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)"
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_cancel_keyboard())
     return EDITAR_SELECCIONAR_TRANSACCION
@@ -482,13 +482,13 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
         if vencidos:
             mensaje += f"*{md('Pagos Vencidos')}* 😡\n"
             for nombre in vencidos:
-                mensaje += f"\- El pago de *{md(nombre)}* está vencido y no se ha registrado\.\n"
+                mensaje += rf"\- El pago de *{md(nombre)}* está vencido y no se ha registrado\.\n"
             mensaje += "\n"
 
         if proximos:
             mensaje += f"*{md('Pagos Próximos a Vencer')}* ⚠️\n"
             for nombre in proximos:
-                mensaje += f"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.\n"
+                mensaje += rf"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.\n"
         
         await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
         logger.info(f"Recordatorios de pago enviados a {chat_id}.")
