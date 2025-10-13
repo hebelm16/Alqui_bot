@@ -415,7 +415,8 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             mensaje += f"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
 
     context.user_data['transactions_map'] = transactions_map
-    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\."
+    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)
+ě."
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_cancel_keyboard())
     return EDITAR_SELECCIONAR_TRANSACCION
@@ -469,23 +470,38 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error("No se pudo obtener chat_id para enviar recordatorios.")
         return
     try:
-        inquilinos_a_notificar = await obtener_inquilinos_para_recordatorio()
-        
-        if not inquilinos_a_notificar:
+        recordatorios = await obtener_inquilinos_para_recordatorio()
+        vencidos = recordatorios.get("vencidos", [])
+        proximos = recordatorios.get("proximos", [])
+
+        if not vencidos and not proximos:
             logger.info("No hay recordatorios de pago para enviar hoy.")
             return
-            return
 
-        mensaje = f"🔔 *{md('Recordatorios de Pago Pendiente')}* 🔔\n\n"
-        for nombre in inquilinos_a_notificar:
-            mensaje += f"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún.\n"
+        mensaje = f"🔔 *{md('Recordatorios de Pago')}* 🔔\n\n"
+
+        if vencidos:
+            mensaje += f"*{md('Pagos Vencidos')}* 😡\n"
+            for nombre in vencidos:
+                mensaje += f"\- El pago de *{md(nombre)}* está vencido y no se ha registrado\.
+"
+            mensaje += "\n"
+
+        if proximos:
+            mensaje += f"*{md('Pagos Próximos a Vencer')}* ⚠️\n"
+            for nombre in proximos:
+                mensaje += f"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.
+"
         
         await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
-        logger.error(f"Error en la tarea de enviar recordatorios: {e}", exc_info=True)
-        await context.bot.send_message(chat_id=chat_id, text="Ocurrió un error inesperado en la tarea de recordatorios.")
+        logger.info(f"Recordatorios de pago enviados a {chat_id}.")
+
     except Exception as e:
         logger.error(f"Error en la tarea de enviar recordatorios: {e}", exc_info=True)
-        await context.bot.send_message(chat_id=chat_id, text=f"Ocurrió un error en la tarea de recordatorios: {e}")
+        try:
+            await context.bot.send_message(chat_id=chat_id, text="Ocurrió un error inesperado al procesar los recordatorios de pago.")
+        except Exception as send_e:
+            logger.error(f"No se pudo enviar el mensaje de error de recordatorio al chat_id {chat_id}: {send_e}", exc_info=True)
 
 # === Otros Handlers ===
 async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

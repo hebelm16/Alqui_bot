@@ -279,41 +279,54 @@ async def delete_gasto_by_id(gasto_id: int) -> bool:
                 return True
             return False
 
-async def obtener_inquilinos_para_recordatorio() -> list:
+async def obtener_inquilinos_para_recordatorio() -> dict:
     """
-    Obtiene una lista de nombres de inquilinos activos que tienen un pago venciéndose en 2 días
-    y que aún no han pagado en el mes actual.
+    Obtiene una lista de nombres de inquilinos activos para recordatorio de pago.
+    Devuelve un diccionario con dos claves: 'vencidos' y 'proximos'.
     """
-    inquilinos_a_notificar = []
+    recordatorios = {"vencidos": [], "proximos": []}
     hoy = date.today()
-    fecha_recordatorio = hoy + timedelta(days=2)
-    dia_recordatorio = fecha_recordatorio.day
     mes_actual = hoy.month
     anio_actual = hoy.year
 
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            # 1. Encontrar inquilinos activos cuyo día de pago es el día del recordatorio
+            # 1. Obtener todos los inquilinos activos con día de pago asignado
             await cur.execute(
-                "SELECT nombre FROM inquilinos WHERE activo = TRUE AND dia_pago = %s",
-                (dia_recordatorio,)
+                "SELECT nombre, dia_pago FROM inquilinos WHERE activo = TRUE AND dia_pago IS NOT NULL"
             )
-            inquilinos_con_vencimiento = await cur.fetchall()
+            inquilinos = await cur.fetchall()
 
-            if not inquilinos_con_vencimiento:
-                return []
+            if not inquilinos:
+                return recordatorios
 
-            # 2. Para cada inquilino, verificar si ya pagó este mes
-            for inquilino in inquilinos_con_vencimiento:
-                nombre_inquilino = inquilino[0]
+            # 2. Para cada inquilino, verificar si necesita notificación
+            for nombre_inquilino, dia_pago in inquilinos:
+                # Verificar si ya pagó este mes
                 await cur.execute("""
                     SELECT 1 FROM pagos
                     WHERE inquilino = %s
                     AND EXTRACT(MONTH FROM fecha) = %s
                     AND EXTRACT(YEAR FROM fecha) = %s
                 """, (nombre_inquilino, mes_actual, anio_actual))
+                
+                if await cur.fetchone():
+                    continue  # Ya pagó, no necesita recordatorio
 
-                if not await cur.fetchone():
-                    inquilinos_a_notificar.append(nombre_inquilino)
+                # 3. Si no ha pagado, verificar si el pago está vencido o próximo a vencer
+                try:
+                    fecha_pago_actual_mes = date(anio_actual, mes_actual, dia_pago)
+                    dias_para_pago = (fecha_pago_actual_mes - hoy).days
 
-    return inquilinos_a_notificar
+                    if dias_para_pago < 0:
+                        recordatorios["vencidos"].append(nombre_inquilino)
+                    elif 0 <= dias_para_pago <= 2:
+                        recordatorios["proximos"].append(nombre_inquilino)
+                except ValueError:
+                    # Maneja casos como el día 31 en un mes de 30 días.
+                    # Si el día de pago no es válido para el mes actual, se podría ajustar la lógica.
+                    # Por ahora, simplemente se omite para evitar errores.
+                    logger.warning(f"Día de pago '{dia_pago}' inválido para el mes actual para el inquilino '{nombre_inquilino}'.")
+                    continue
+
+    return recordatorios
