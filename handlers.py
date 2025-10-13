@@ -399,7 +399,7 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
     transactions_map = {}
     
     if pagos:
-        mensaje += "*Pagos*\n" # This line is causing the error
+        mensaje += "*Pagos*\n"
         for i, (p_id, p_fecha_str, p_inquilino, p_monto) in enumerate(pagos, 1):
             code = f"P{i}"
             transactions_map[code] = {"id": p_id, "tipo": "pago"}
@@ -415,8 +415,7 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             mensaje += f"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
 
     context.user_data['transactions_map'] = transactions_map
-    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)
-ě."
+    mensaje += "\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)"
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_cancel_keyboard())
     return EDITAR_SELECCIONAR_TRANSACCION
@@ -483,15 +482,13 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
         if vencidos:
             mensaje += f"*{md('Pagos Vencidos')}* 😡\n"
             for nombre in vencidos:
-                mensaje += f"\- El pago de *{md(nombre)}* está vencido y no se ha registrado\.
-"
+                mensaje += f"\- El pago de *{md(nombre)}* está vencido y no se ha registrado\.\n"
             mensaje += "\n"
 
         if proximos:
             mensaje += f"*{md('Pagos Próximos a Vencer')}* ⚠️\n"
             for nombre in proximos:
-                mensaje += f"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.
-"
+                mensaje += f"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.\n"
         
         await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
         logger.info(f"Recordatorios de pago enviados a {chat_id}.")
