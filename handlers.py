@@ -482,7 +482,7 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
         if vencidos:
             mensaje += f"*{md('Pagos Vencidos')}* 😡\n"
             for nombre in vencidos:
-                mensaje += rf"\- El pago de *{md(nombre)}* está vencido y no se ha registrado\.\n"
+                mensaje += rf"\- El pago de *{md(nombre)}* está vencido y no se ha registrado\."
             mensaje += "\n"
 
         if proximos:
