@@ -306,8 +306,8 @@ async def obtener_inquilinos_para_recordatorio() -> dict:
                 await cur.execute("""
                     SELECT 1 FROM pagos
                     WHERE inquilino = %s
-                    AND EXTRACT(MONTH FROM fecha) = %s
-                    AND EXTRACT(YEAR FROM fecha) = %s
+                    AND EXTRACT(MONTH FROM fecha::date) = %s
+                    AND EXTRACT(YEAR FROM fecha::date) = %s
                 """, (nombre_inquilino, mes_actual, anio_actual))
                 
                 if await cur.fetchone():

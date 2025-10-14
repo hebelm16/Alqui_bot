@@ -128,6 +128,15 @@ def main() -> None:
     # Programar la tarea de recordatorios diarios
     job_queue = app.job_queue
     if job_queue:
+        # Tarea temporal para probar los recordatorios al iniciar
+        job_queue.run_once(
+            enviar_recordatorios_pago,
+            when=10,  # 10 segundos
+            chat_id=AUTHORIZED_USERS[0],
+            name="test_recordatorio_inicio"
+        )
+        logging.info("Tarea de prueba de recordatorios programada para ejecutarse en 10 segundos.")
+
         job_queue.run_daily(
             enviar_recordatorios_pago,
             time=time(hour=13, minute=0, second=0),  # 9:00 AM en Santo Domingo (UTC-4)
