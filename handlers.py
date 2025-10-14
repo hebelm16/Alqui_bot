@@ -488,7 +488,7 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
         if proximos:
             mensaje += f"*{md('Pagos Próximos a Vencer')}* ⚠️\n"
             for nombre in proximos:
-                mensaje += rf"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.\n"
+                mensaje += f"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.\n"
         
         await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
         logger.info(f"Recordatorios de pago enviados a {chat_id}.")
