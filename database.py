@@ -257,6 +257,80 @@ async def actualizar_dia_pago_inquilino(inquilino_id: int, dia_pago: int) -> boo
                 return True
             return False
 
+async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
+    """
+    Determina la fecha del primer mes pendiente de pago para un inquilino,
+    buscando "huecos" en su historial de pagos.
+    Devuelve una fecha (date) para usar en el registro del pago o None si está al día.
+    """
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            # 1. Obtener el día de pago del inquilino
+            await cur.execute(
+                "SELECT dia_pago FROM inquilinos WHERE nombre = %s",
+                (inquilino_nombre,)
+            )
+            result = await cur.fetchone()
+            if not result or not result[0]:
+                # No se puede determinar la deuda sin un día de pago configurado.
+                return None
+            dia_pago = result[0]
+
+            # 2. Obtener un conjunto de todos los meses para los que el inquilino ya ha pagado.
+            await cur.execute(
+                "SELECT DISTINCT EXTRACT(YEAR FROM fecha)::int, EXTRACT(MONTH FROM fecha)::int "
+                "FROM pagos WHERE inquilino = %s ORDER BY 1, 2",
+                (inquilino_nombre,)
+            )
+            pagos_realizados = await cur.fetchall()
+
+            if not pagos_realizados:
+                # Si es el primer pago, no hay historial para buscar huecos.
+                return None
+
+            # 3. Iterar desde el primer pago registrado hasta el mes actual para encontrar el primer hueco.
+            primer_anio, primer_mes = pagos_realizados[0]
+            fecha_iter = date(primer_anio, primer_mes, 1)
+            hoy = date.today()
+            pagos_set = set(pagos_realizados)
+
+            while fecha_iter <= hoy:
+                if (fecha_iter.year, fecha_iter.month) not in pagos_set:
+                    # Se encontró un mes sin pago. Esta es la deuda más antigua.
+                    try:
+                        return date(fecha_iter.year, fecha_iter.month, dia_pago)
+                    except ValueError:
+                        import calendar
+                        _, ultimo_dia = calendar.monthrange(fecha_iter.year, fecha_iter.month)
+                        return date(fecha_iter.year, fecha_iter.month, ultimo_dia)
+
+                # Avanzar al mes siguiente
+                if fecha_iter.month == 12:
+                    fecha_iter = date(fecha_iter.year + 1, 1, 1)
+                else:
+                    fecha_iter = date(fecha_iter.year, fecha_iter.month + 1, 1)
+
+            # 4. Si no hay huecos, la próxima deuda es el mes siguiente al último pago.
+            ultimo_anio, ultimo_mes = pagos_realizados[-1]
+            if ultimo_mes == 12:
+                siguiente_mes = 1
+                siguiente_anio = ultimo_anio + 1
+            else:
+                siguiente_mes = ultimo_mes + 1
+                siguiente_anio = ultimo_anio
+            
+            fecha_siguiente_pago = date(siguiente_anio, siguiente_mes, 1)
+
+            if fecha_siguiente_pago <= hoy:
+                try:
+                    return date(siguiente_anio, siguiente_mes, dia_pago)
+                except ValueError:
+                    import calendar
+                    _, ultimo_dia = calendar.monthrange(siguiente_anio, siguiente_mes)
+                    return date(siguiente_anio, siguiente_mes, ultimo_dia)
+
+    return None
+
 # --- Funciones para Borrar Específicos ---
 
 async def delete_pago_by_id(pago_id: int) -> bool:

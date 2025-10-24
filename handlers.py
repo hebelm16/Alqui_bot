@@ -11,7 +11,7 @@ from database import (
     registrar_pago, registrar_gasto, obtener_resumen, obtener_informe_mensual,
     deshacer_ultimo_pago, deshacer_ultimo_gasto, crear_inquilino, obtener_inquilinos,
     cambiar_estado_inquilino, obtener_inquilino_por_id, delete_pago_by_id, delete_gasto_by_id,
-    obtener_inquilinos_para_recordatorio, actualizar_dia_pago_inquilino
+    obtener_inquilinos_para_recordatorio, actualizar_dia_pago_inquilino, obtener_mes_pago_pendiente
 )
 from config import AUTHORIZED_USERS
 import os
@@ -56,21 +56,28 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     try:
         monto = context.user_data['monto']
         detalle = context.user_data['detalle']
-        fecha = date.today()
+        fecha_registro = date.today()
+        mensaje_adicional = ""
 
         if tipo == 'pago':
-            await registrar_pago(fecha, detalle, monto)
+            fecha_pago_efectiva = await obtener_mes_pago_pendiente(detalle)
+            if fecha_pago_efectiva:
+                fecha_registro = fecha_pago_efectiva
+                mensaje_adicional = f"\n\n_Nota: El pago se ha registrado para el período pendiente de {md(fecha_registro.strftime('%B de %Y'))}\._"
+            
+            await registrar_pago(fecha_registro, detalle, monto)
             mensaje = (
                 f"✅ Pago registrado correctamente:\n"
-                f"📅 Fecha: {fecha.strftime('%d/%m/%Y')}\n"
+                f"📅 Fecha de Pago: {md(fecha_registro.strftime('%d/%m/%Y'))}\n"
                 f"👤 Inquilino: {md(detalle)}\n"
                 f"💵 Monto: {md(format_currency(monto))}"
+                f"{mensaje_adicional}"
             )
         elif tipo == 'gasto':
-            await registrar_gasto(fecha, detalle, monto)
+            await registrar_gasto(fecha_registro, detalle, monto)
             mensaje = (
                 f"✅ Gasto registrado correctamente:\n"
-                f"📅 Fecha: {fecha.strftime('%d/%m/%Y')}\n"
+                f"📅 Fecha: {fecha_registro.strftime('%d/%m/%Y')}\n"
                 f"📝 Descripción: {md(detalle)}\n"
                 f"💸 Monto: {md(format_currency(monto))}"
             )
