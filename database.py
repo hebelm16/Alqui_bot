@@ -278,7 +278,7 @@ async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
 
             # 2. Obtener un conjunto de todos los meses para los que el inquilino ya ha pagado.
             await cur.execute(
-                "SELECT DISTINCT EXTRACT(YEAR FROM fecha)::int, EXTRACT(MONTH FROM fecha)::int "
+                "SELECT DISTINCT EXTRACT(YEAR FROM fecha::date)::int, EXTRACT(MONTH FROM fecha::date)::int "
                 "FROM pagos WHERE inquilino = %s ORDER BY 1, 2",
                 (inquilino_nombre,)
             )
