@@ -440,7 +440,7 @@ async def editar_seleccionar_transaccion(update: Update, context: ContextTypes.D
 
     keyboard = [[KeyboardButton("Sí, borrar")], [KeyboardButton("No, cancelar")]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text(f"¿Estás seguro de que quieres borrar la transacción `{md(code)}`? Esta acción no se puede deshacer.", parse_mode=ParseMode.MARKDOWN_V2, reply_markup=reply_markup)
+    await update.message.reply_text(f"¿Estás seguro de que quieres borrar la transacción `{md(code)}`? Esta acción no se puede deshacer\.", parse_mode=ParseMode.MARKDOWN_V2, reply_markup=reply_markup)
     return EDITAR_CONFIRMAR_BORRADO
 
 async def editar_ejecutar_borrado(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
