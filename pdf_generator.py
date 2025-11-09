@@ -51,17 +51,20 @@ def crear_informe_pdf(datos_informe: dict, mes: int, anio: int):
     p_resumen_titulo = Paragraph("Resumen Financiero", styles['h2'])
     elementos.append(p_resumen_titulo)
 
+    # Usar Paragraph para interpretar las etiquetas <b>
+    body_style = styles['BodyText']
+    right_align_style = styles['BodyText']
+    right_align_style.alignment = 2 # 0=left, 1=center, 2=right
+
     resumen_data = [
-        ['<b>Ingresos Totales:</b>', format_currency_pdf(datos_informe.get('total_ingresos', 0))],
-        ['<b>Gastos Totales:</b>', format_currency_pdf(datos_informe.get('total_gastos', 0))],
-        ['<b>Comisión:</b>', format_currency_pdf(datos_informe.get('total_comision', 0))],
-        ['<b>Monto Neto a Entregar:</b>', f"<b>{format_currency_pdf(datos_informe.get('monto_neto', 0))}</b>"],
+        [Paragraph('<b>Ingresos Totales:</b>', body_style), Paragraph(format_currency_pdf(datos_informe.get('total_ingresos', 0)), right_align_style)],
+        [Paragraph('<b>Gastos Totales:</b>', body_style), Paragraph(format_currency_pdf(datos_informe.get('total_gastos', 0)), right_align_style)],
+        [Paragraph('<b>Comisión:</b>', body_style), Paragraph(format_currency_pdf(datos_informe.get('total_comision', 0)), right_align_style)],
+        [Paragraph('<b>Monto Neto a Entregar:</b>', body_style), Paragraph(f"<b>{format_currency_pdf(datos_informe.get('monto_neto', 0))}</b>", right_align_style)],
     ]
     
     resumen_table = Table(resumen_data, colWidths=[2*inch, 4*inch])
     resumen_table.setStyle(TableStyle([
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('ALIGN', (1,0), (1,-1), 'RIGHT'),
         ('FONTNAME', (0,3), (1,3), 'Helvetica-Bold'),
         ('BOTTOMPADDING', (0,0), (-1,-1), 8),
         ('TOPPADDING', (0,0), (-1,-1), 2),
