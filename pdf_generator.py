@@ -75,7 +75,9 @@ def crear_informe_pdf(datos_informe: dict, mes: int, anio: int):
         elementos.append(Paragraph("Detalle de Pagos Recibidos", styles['h2']))
         data_pagos = [['Fecha', 'Inquilino', 'Monto']]
         for _, fecha, inquilino, monto in pagos:
-            data_pagos.append([fecha.strftime('%d/%m/%Y'), inquilino, format_currency_pdf(monto)])
+            # Asegurarse de que la fecha sea un objeto datetime antes de formatear
+            fecha_obj = datetime.strptime(str(fecha), '%Y-%m-%d') if isinstance(fecha, str) else fecha
+            data_pagos.append([fecha_obj.strftime('%d/%m/%Y'), inquilino, format_currency_pdf(monto)])
 
         tabla_pagos = Table(data_pagos, colWidths=[1.5*inch, 3*inch, 1.5*inch])
         tabla_pagos.setStyle(TableStyle([
@@ -96,7 +98,9 @@ def crear_informe_pdf(datos_informe: dict, mes: int, anio: int):
         elementos.append(Paragraph("Detalle de Gastos Realizados", styles['h2']))
         data_gastos = [['Fecha', 'Descripción', 'Monto']]
         for _, fecha, desc, monto in gastos:
-            data_gastos.append([fecha.strftime('%d/%m/%Y'), Paragraph(desc, styles['BodyText']), format_currency_pdf(monto)])
+            # Asegurarse de que la fecha sea un objeto datetime antes de formatear
+            fecha_obj = datetime.strptime(str(fecha), '%Y-%m-%d') if isinstance(fecha, str) else fecha
+            data_gastos.append([fecha_obj.strftime('%d/%m/%Y'), Paragraph(desc, styles['BodyText']), format_currency_pdf(monto)])
 
         tabla_gastos = Table(data_gastos, colWidths=[1.5*inch, 3*inch, 1.5*inch])
         tabla_gastos.setStyle(TableStyle([
