@@ -1,5 +1,6 @@
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile
 from telegram.ext import ContextTypes, ConversationHandler
+import calendar
 from datetime import date, datetime, timedelta
 import logging
 import psycopg2
@@ -14,6 +15,7 @@ from database import (
     obtener_inquilinos_para_recordatorio, actualizar_dia_pago_inquilino, obtener_mes_pago_pendiente
 )
 from config import AUTHORIZED_USERS
+from pdf_generator import crear_informe_pdf
 import os
 import tempfile
 
@@ -593,31 +595,27 @@ async def generar_informe_mensual_custom(update: Update, context: ContextTypes.D
         return INFORME_GENERAR
 
 async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_TYPE, mes: int, anio: int) -> int:
-    temp_file_path = None
     try:
         report_data = await obtener_informe_mensual(mes, anio)
-        title = f"Informe Mensual - {mes}/{anio}"
-        mensaje = format_report(title, report_data)
-
-        with tempfile.NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8', suffix='.txt') as temp_file:
-            temp_file.write(mensaje)
-            temp_file_path = temp_file.name
-
-        with open(temp_file_path, 'rb') as f:
-            await update.message.reply_document(document=InputFile(f, filename=f'informe_mensual_{mes}_{anio}.txt'),
-                                                caption='Aquí está tu informe mensual.')
+        
+        # Generar el PDF en memoria
+        pdf_buffer = crear_informe_pdf(report_data, mes, anio)
+        
+        # Obtener el nombre del mes para el archivo
+        nombre_mes = calendar.month_name[mes].capitalize()
+        nombre_archivo = f"Informe_{nombre_mes}_{anio}.pdf"
+        
+        await update.message.reply_document(
+            document=InputFile(pdf_buffer, filename=nombre_archivo),
+            caption=f"📄 Aquí tienes el informe de pagos para {nombre_mes} de {anio}.",
+            reply_markup=create_main_menu_keyboard()
+        )
     except psycopg2.Error as e:
         logger.error(f"Error de base de datos al generar informe: {e}", exc_info=True)
         await update.message.reply_text("❌ Hubo un error con la base de datos al generar el informe.", reply_markup=create_main_menu_keyboard())
-    except IOError as e:
-        logger.error(f"Error de archivo al generar informe: {e}", exc_info=True)
-        await update.message.reply_text("❌ Hubo un error al crear el archivo de informe.", reply_markup=create_main_menu_keyboard())
     except Exception as e:
         logger.error(f"Error inesperado al generar informe: {e}", exc_info=True)
         await update.message.reply_text("❌ Hubo un error inesperado al generar el informe.", reply_markup=create_main_menu_keyboard())
-    finally:
-        if temp_file_path and os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
     return MENU
 
 async def deshacer_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
