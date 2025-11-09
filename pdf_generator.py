@@ -59,7 +59,7 @@ def crear_informe_pdf(datos_informe: dict, mes: int, anio: int):
     resumen_data = [
         [Paragraph('<b>Ingresos Totales:</b>', body_style), Paragraph(format_currency_pdf(datos_informe.get('total_ingresos', 0)), right_align_style)],
         [Paragraph('<b>Gastos Totales:</b>', body_style), Paragraph(format_currency_pdf(datos_informe.get('total_gastos', 0)), right_align_style)],
-        [Paragraph('<b>Comisión:</b>', body_style), Paragraph(format_currency_pdf(datos_informe.get('total_comision', 0)), right_align_style)],
+        [Paragraph('<b>Comisión de Hecbel:</b>', body_style), Paragraph(format_currency_pdf(datos_informe.get('total_comision', 0)), right_align_style)],
         [Paragraph('<b>Monto Neto a Entregar:</b>', body_style), Paragraph(f"<b>{format_currency_pdf(datos_informe.get('monto_neto', 0))}</b>", right_align_style)],
     ]
     
