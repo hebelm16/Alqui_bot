@@ -135,28 +135,42 @@ async def registrar_gasto(fecha: str, descripcion: str, monto: Decimal) -> int:
 async def deshacer_ultimo_pago() -> tuple:
     """Elimina el último pago registrado y devuelve sus detalles de forma atómica."""
     async with pool.acquire() as conn:
-        async with conn.transaction():
-            async with conn.cursor() as cur:
+        async with conn.cursor() as cur:
+            await cur.execute("BEGIN")
+            try:
                 await cur.execute("SELECT id, inquilino, monto FROM pagos ORDER BY id DESC LIMIT 1 FOR UPDATE")
                 if ultimo_pago := await cur.fetchone():
                     pago_id, inquilino, monto = ultimo_pago
                     await cur.execute("DELETE FROM pagos WHERE id = %s", (pago_id,))
                     logger.info(f"Pago con ID {pago_id} eliminado.")
+                    await cur.execute("COMMIT")
                     return inquilino, monto
+                
+                await cur.execute("COMMIT")
                 return None, None
+            except Exception:
+                await cur.execute("ROLLBACK")
+                raise
 
 async def deshacer_ultimo_gasto() -> tuple:
     """Elimina el último gasto registrado y devuelve sus detalles de forma atómica."""
     async with pool.acquire() as conn:
-        async with conn.transaction():
-            async with conn.cursor() as cur:
+        async with conn.cursor() as cur:
+            await cur.execute("BEGIN")
+            try:
                 await cur.execute("SELECT id, descripcion, monto FROM gastos ORDER BY id DESC LIMIT 1 FOR UPDATE")
                 if ultimo_gasto := await cur.fetchone():
                     gasto_id, descripcion, monto = ultimo_gasto
                     await cur.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
                     logger.info(f"Gasto con ID {gasto_id} eliminado.")
+                    await cur.execute("COMMIT")
                     return descripcion, monto
+                
+                await cur.execute("COMMIT")
                 return None, None
+            except Exception:
+                await cur.execute("ROLLBACK")
+                raise
 
 # --- Funciones para informes ---
 
