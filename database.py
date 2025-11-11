@@ -273,9 +273,8 @@ async def actualizar_dia_pago_inquilino(inquilino_id: int, dia_pago: int) -> boo
 
 async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
     """
-    Determina la fecha del primer mes pendiente de pago para un inquilino,
-    buscando "huecos" en su historial de pagos.
-    Devuelve una fecha (date) para usar en el registro del pago o None si está al día.
+    Determina la fecha de pago. Prioritiza el mes actual si no ha sido pagado.
+    Si el mes actual ya está pagado, busca el próximo mes pendiente.
     """
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -286,11 +285,29 @@ async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
             )
             result = await cur.fetchone()
             if not result or not result[0]:
-                # No se puede determinar la deuda sin un día de pago configurado.
                 return None
             dia_pago = result[0]
 
-            # 2. Obtener un conjunto de todos los meses para los que el inquilino ya ha pagado.
+            hoy = date.today()
+
+            # 2. Verificar si el mes actual ya fue pagado
+            await cur.execute(
+                "SELECT 1 FROM pagos WHERE inquilino = %s AND "
+                "EXTRACT(YEAR FROM fecha::date) = %s AND EXTRACT(MONTH FROM fecha::date) = %s",
+                (inquilino_nombre, hoy.year, hoy.month)
+            )
+            pago_mes_actual = await cur.fetchone()
+
+            if not pago_mes_actual:
+                # Si no ha pagado el mes actual, se le asigna el pago a este mes.
+                try:
+                    return date(hoy.year, hoy.month, dia_pago)
+                except ValueError:
+                    import calendar
+                    _, ultimo_dia = calendar.monthrange(hoy.year, hoy.month)
+                    return date(hoy.year, hoy.month, ultimo_dia)
+
+            # 3. Si el mes actual ya está pagado, buscar el siguiente mes pendiente (lógica original)
             await cur.execute(
                 "SELECT DISTINCT EXTRACT(YEAR FROM fecha::date)::int, EXTRACT(MONTH FROM fecha::date)::int "
                 "FROM pagos WHERE inquilino = %s ORDER BY 1, 2",
@@ -299,13 +316,12 @@ async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
             pagos_realizados = await cur.fetchall()
 
             if not pagos_realizados:
-                # Si es el primer pago, no hay historial para buscar huecos.
+                # Esto no debería pasar si el mes actual está pagado, pero por si acaso.
                 return None
 
-            # 3. Iterar desde el primer pago registrado hasta el mes actual para encontrar el primer hueco.
+            # 4. Iterar desde el primer pago para encontrar un hueco
             primer_anio, primer_mes = pagos_realizados[0]
             fecha_iter = date(primer_anio, primer_mes, 1)
-            hoy = date.today()
             pagos_set = set(pagos_realizados)
 
             while fecha_iter <= hoy:
@@ -317,14 +333,13 @@ async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
                         import calendar
                         _, ultimo_dia = calendar.monthrange(fecha_iter.year, fecha_iter.month)
                         return date(fecha_iter.year, fecha_iter.month, ultimo_dia)
-
-                # Avanzar al mes siguiente
+                
                 if fecha_iter.month == 12:
                     fecha_iter = date(fecha_iter.year + 1, 1, 1)
                 else:
                     fecha_iter = date(fecha_iter.year, fecha_iter.month + 1, 1)
 
-            # 4. Si no hay huecos, la próxima deuda es el mes siguiente al último pago.
+            # 5. Si no hay huecos, la deuda es el mes siguiente al último pago.
             ultimo_anio, ultimo_mes = pagos_realizados[-1]
             if ultimo_mes == 12:
                 siguiente_mes = 1
@@ -335,7 +350,7 @@ async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
             
             fecha_siguiente_pago = date(siguiente_anio, siguiente_mes, 1)
 
-            if fecha_siguiente_pago <= hoy:
+            if fecha_siguiente_pago <= hoy.replace(day=1):
                 try:
                     return date(siguiente_anio, siguiente_mes, dia_pago)
                 except ValueError:
