@@ -631,7 +631,7 @@ async def deshacer_pago_handler(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         inquilino, monto = await deshacer_ultimo_pago()
         if inquilino:
-            mensaje = f"✅ Último pago de *{md(inquilino)}* por *{md(format_currency(monto))}* ha sido eliminado."
+            mensaje = f"✅ Último pago de *{md(inquilino)}* por *{md(format_currency(monto))}* ha sido eliminado\."
         else:
             mensaje = "No hay pagos para deshacer."
         await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())

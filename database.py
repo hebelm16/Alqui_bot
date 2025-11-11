@@ -273,8 +273,9 @@ async def actualizar_dia_pago_inquilino(inquilino_id: int, dia_pago: int) -> boo
 
 async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
     """
-    Determina la fecha de pago. Prioritiza el mes actual si no ha sido pagado.
-    Si el mes actual ya está pagado, busca el próximo mes pendiente.
+    Determina la fecha de pago para el próximo mes pendiente de un inquilino.
+    Busca el último mes pagado y asigna el pago al mes siguiente.
+    Si no hay pagos, o si el último pago fue hace mucho, prioriza el mes actual si está pendiente.
     """
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -285,80 +286,52 @@ async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
             )
             result = await cur.fetchone()
             if not result or not result[0]:
-                return None
+                return None  # No se puede determinar sin día de pago
             dia_pago = result[0]
 
             hoy = date.today()
 
-            # 2. Verificar si el mes actual ya fue pagado
+            # 2. Buscar el último mes pagado por el inquilino
             await cur.execute(
-                "SELECT 1 FROM pagos WHERE inquilino = %s AND "
-                "EXTRACT(YEAR FROM fecha::date) = %s AND EXTRACT(MONTH FROM fecha::date) = %s",
-                (inquilino_nombre, hoy.year, hoy.month)
-            )
-            pago_mes_actual = await cur.fetchone()
-
-            if not pago_mes_actual:
-                # Si no ha pagado el mes actual, se le asigna el pago a este mes.
-                try:
-                    return date(hoy.year, hoy.month, dia_pago)
-                except ValueError:
-                    import calendar
-                    _, ultimo_dia = calendar.monthrange(hoy.year, hoy.month)
-                    return date(hoy.year, hoy.month, ultimo_dia)
-
-            # 3. Si el mes actual ya está pagado, buscar el siguiente mes pendiente (lógica original)
-            await cur.execute(
-                "SELECT DISTINCT EXTRACT(YEAR FROM fecha::date)::int, EXTRACT(MONTH FROM fecha::date)::int "
-                "FROM pagos WHERE inquilino = %s ORDER BY 1, 2",
+                "SELECT EXTRACT(YEAR FROM fecha::date)::int, EXTRACT(MONTH FROM fecha::date)::int "
+                "FROM pagos WHERE inquilino = %s ORDER BY fecha DESC LIMIT 1",
                 (inquilino_nombre,)
             )
-            pagos_realizados = await cur.fetchall()
+            ultimo_pago = await cur.fetchone()
 
-            if not pagos_realizados:
-                # Esto no debería pasar si el mes actual está pagado, pero por si acaso.
-                return None
+            siguiente_anio, siguiente_mes = hoy.year, hoy.month
 
-            # 4. Iterar desde el primer pago para encontrar un hueco
-            primer_anio, primer_mes = pagos_realizados[0]
-            fecha_iter = date(primer_anio, primer_mes, 1)
-            pagos_set = set(pagos_realizados)
-
-            while fecha_iter <= hoy:
-                if (fecha_iter.year, fecha_iter.month) not in pagos_set:
-                    # Se encontró un mes sin pago. Esta es la deuda más antigua.
-                    try:
-                        return date(fecha_iter.year, fecha_iter.month, dia_pago)
-                    except ValueError:
-                        import calendar
-                        _, ultimo_dia = calendar.monthrange(fecha_iter.year, fecha_iter.month)
-                        return date(fecha_iter.year, fecha_iter.month, ultimo_dia)
-                
-                if fecha_iter.month == 12:
-                    fecha_iter = date(fecha_iter.year + 1, 1, 1)
+            if ultimo_pago:
+                ultimo_anio, ultimo_mes = ultimo_pago
+                # Calcular el mes siguiente al último pago
+                if ultimo_mes == 12:
+                    siguiente_mes = 1
+                    siguiente_anio = ultimo_anio + 1
                 else:
-                    fecha_iter = date(fecha_iter.year, fecha_iter.month + 1, 1)
-
-            # 5. Si no hay huecos, la deuda es el mes siguiente al último pago.
-            ultimo_anio, ultimo_mes = pagos_realizados[-1]
-            if ultimo_mes == 12:
-                siguiente_mes = 1
-                siguiente_anio = ultimo_anio + 1
-            else:
-                siguiente_mes = ultimo_mes + 1
-                siguiente_anio = ultimo_anio
+                    siguiente_mes = ultimo_mes + 1
+                    siguiente_anio = ultimo_anio
             
+            # Si el siguiente mes calculado es futuro, y el mes actual no está pagado,
+            # se debe priorizar el mes actual.
             fecha_siguiente_pago = date(siguiente_anio, siguiente_mes, 1)
+            if fecha_siguiente_pago > hoy.replace(day=1):
+                 await cur.execute(
+                    "SELECT 1 FROM pagos WHERE inquilino = %s AND "
+                    "EXTRACT(YEAR FROM fecha::date) = %s AND EXTRACT(MONTH FROM fecha::date) = %s",
+                    (inquilino_nombre, hoy.year, hoy.month)
+                )
+                 if not await cur.fetchone():
+                     # El mes actual no está pagado, así que se le da prioridad.
+                     siguiente_anio, siguiente_mes = hoy.year, hoy.month
 
-            if fecha_siguiente_pago <= hoy.replace(day=1):
-                try:
-                    return date(siguiente_anio, siguiente_mes, dia_pago)
-                except ValueError:
-                    import calendar
-                    _, ultimo_dia = calendar.monthrange(siguiente_anio, siguiente_mes)
-                    return date(siguiente_anio, siguiente_mes, ultimo_dia)
-
-    return None
+            # Construir la fecha de pago para el mes determinado
+            try:
+                return date(siguiente_anio, siguiente_mes, dia_pago)
+            except ValueError:
+                # Manejar días inválidos para el mes (ej. día 31 en febrero)
+                import calendar
+                _, ultimo_dia = calendar.monthrange(siguiente_anio, siguiente_mes)
+                return date(siguiente_anio, siguiente_mes, ultimo_dia)
 
 # --- Funciones para Borrar Específicos ---
 
