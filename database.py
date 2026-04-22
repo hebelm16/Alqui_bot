@@ -129,6 +129,7 @@ async def registrar_gasto(fecha: str, descripcion: str, monto: Decimal) -> int:
     """Registra un nuevo gasto en la base de datos."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
+            # ✅ CORREGIDO: Sin especificar ID, PostgreSQL lo genera automáticamente
             await cur.execute("INSERT INTO gastos (fecha, descripcion, monto) VALUES (%s, %s, %s) RETURNING id", (fecha, descripcion, monto))
             gasto_id = await cur.fetchone()
             logger.info(f"Gasto registrado con ID: {gasto_id[0]}")
