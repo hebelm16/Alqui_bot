@@ -83,9 +83,13 @@ async def inicializar_db():
                 CREATE TABLE IF NOT EXISTS gastos (
                     id SERIAL PRIMARY KEY,
                     fecha DATE NOT NULL,
-                    descripcion TEXT NOT NULL,
-                    monto NUMERIC(10, 2) NOT NULL
-                )
+                    descripcion VARCHAR(255) NOT NULL,
+                    monto NUMERIC(12, 2) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_gastos_fecha ON gastos(fecha);
             """)
 
             # --- Migración para añadir columna dia_pago a inquilinos ---
