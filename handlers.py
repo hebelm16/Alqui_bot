@@ -542,6 +542,45 @@ async def editar_ejecutar_borrado(update: Update, context: ContextTypes.DEFAULT_
     context.user_data.clear()
     return MENU
 
+# === Tareas Automáticas de Recordatorios ===
+async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Tarea automática para enviar recordatorios de pagos vencidos/próximos."""
+    chat_id = getattr(getattr(context, "job", None), "chat_id", None)
+    if chat_id is None:
+        logger.error("No se pudo obtener chat_id para enviar recordatorios.")
+        return
+    try:
+        recordatorios = await obtener_inquilinos_para_recordatorio()
+        vencidos = recordatorios.get("vencidos", [])
+        proximos = recordatorios.get("proximos", [])
+
+        if not vencidos and not proximos:
+            logger.info("No hay recordatorios de pago para enviar hoy.")
+            return
+
+        mensaje = r"🔔 *Recordatorios de Pago* 🔔\n\n"
+
+        if vencidos:
+            mensaje += r"*Pagos Vencidos* 😡\n"
+            for nombre in vencidos:
+                mensaje += rf"\- El pago de *{md(nombre)}* está vencido y no se ha registrado\.\n"
+            mensaje += "\n"
+
+        if proximos:
+            mensaje += r"*Pagos Próximos a Vencer* ⚠️\n"
+            for nombre in proximos:
+                mensaje += rf"\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\.\n"
+        
+        await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
+        logger.info(f"Recordatorios de pago enviados a {chat_id}.")
+
+    except Exception as e:
+        logger.error(f"Error en la tarea de enviar recordatorios: {e}", exc_info=True)
+        try:
+            await context.bot.send_message(chat_id=chat_id, text="Ocurrió un error inesperado al procesar los recordatorios de pago.")
+        except Exception as send_e:
+            logger.error(f"No se pudo enviar el mensaje de error de recordatorio al chat_id {chat_id}: {send_e}", exc_info=True)
+
 # === Otros Handlers ===
 async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para ver resumen general."""
