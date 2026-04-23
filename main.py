@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 from datetime import time
+from telegram.request import HTTPXRequest
 
 # En Windows, se requiere una política de eventos específica para aiopg
 if os.name == 'nt':
@@ -51,8 +52,20 @@ async def main():
     await init_pool()
     await inicializar_db()
 
+    # ✅ CORREGIDO: Configurar HTTPXRequest con timeouts más largos
+    request = HTTPXRequest(
+        http_version="1.1",
+        connect_timeout=20,  # ✅ Aumentado de 5 a 20 segundos
+        read_timeout=20,     # ✅ Aumentado de 5 a 20 segundos
+        write_timeout=20,    # ✅ Aumentado de 5 a 20 segundos
+        pool_timeout=20,     # ✅ Aumentado de 5 a 20 segundos
+    )
+
     # Crear la aplicación
-    application = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder()\
+        .token(BOT_TOKEN)\
+        .request(request)\
+        .build()
 
     # === HANDLER: /start ===
     application.add_handler(CommandHandler("start", start))
@@ -153,21 +166,29 @@ async def main():
 
     # === TAREA AUTOMÁTICA: Recordatorios diarios ===
     # Enviar recordatorios de pago a las 08:00 AM
-    application.job_queue.run_daily(
-        enviar_recordatorios_pago,
-        time=time(hour=8, minute=0),
-        job_kwargs={"chat_id": AUTHORIZED_USERS[0] if AUTHORIZED_USERS else None}
-    )
+    if AUTHORIZED_USERS:
+        application.job_queue.run_daily(
+            enviar_recordatorios_pago,
+            time=time(hour=8, minute=0),
+            job_kwargs={"chat_id": AUTHORIZED_USERS[0]}
+        )
 
     logger.info("Bot iniciado correctamente.")
 
-    # Iniciar el bot
+    # Iniciar el bot con reintentos automáticos
     await application.initialize()
     await application.start()
-    await application.updater.start_polling(allowed_updates=['message', 'callback_query'])
-
+    
     try:
-        await application.updater.idle()
+        await application.updater.start_polling(
+            allowed_updates=['message', 'callback_query'],
+            timeout=30,  # ✅ Timeout de polling aumentado
+            read_timeout=20,  # ✅ Timeout de lectura
+            write_timeout=20,  # ✅ Timeout de escritura
+            connect_timeout=20,  # ✅ Timeout de conexión
+        )
+    except Exception as e:
+        logger.error(f"Error en polling: {e}", exc_info=True)
     finally:
         # Cerrar el pool de base de datos
         await close_pool()
