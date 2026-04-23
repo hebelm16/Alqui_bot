@@ -4,9 +4,9 @@ import logging
 from datetime import time
 from telegram.request import HTTPXRequest
 
+import asyncio
 # En Windows, se requiere una política de eventos específica para aiopg
 if os.name == 'nt':
-    import asyncio
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
@@ -186,11 +186,19 @@ async def main():
             write_timeout=20,  # ✅ Timeout de escritura
             connect_timeout=20,  # ✅ Timeout de conexión
         )
+        
+        # ✅ CORREGIDO: start_polling no bloquea el hilo principal.
+        # Necesitamos un evento que espere para que el script no termine y el bot siga escuchando.
+        logger.info("El bot está escuchando mensajes...")
+        stop_event = asyncio.Event()
+        await stop_event.wait()
     except Exception as e:
         logger.error(f"Error en polling: {e}", exc_info=True)
     finally:
         # Cerrar el pool de base de datos
         await close_pool()
+        if application.updater and application.updater.running:
+            await application.updater.stop()
         await application.stop()
 
 if __name__ == '__main__':

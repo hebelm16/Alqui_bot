@@ -122,7 +122,7 @@ async def registrar_pago(fecha: str, inquilino: str, monto: Decimal) -> int:
         async with conn.cursor() as cur:
             await cur.execute("INSERT INTO pagos (fecha, inquilino, monto) VALUES (%s, %s, %s) RETURNING id", (fecha, inquilino, monto))
             pago_id = await cur.fetchone()
-            # ✅ CORREGIDO: Remover commit - aiopg lo hace automáticamente
+            await cur.execute("COMMIT")
             logger.info(f"Pago registrado con ID: {pago_id[0]}")
             return pago_id[0]
 
@@ -132,7 +132,7 @@ async def registrar_gasto(fecha: str, descripcion: str, monto: Decimal) -> int:
         async with conn.cursor() as cur:
             await cur.execute("INSERT INTO gastos (fecha, descripcion, monto) VALUES (%s, %s, %s) RETURNING id", (fecha, descripcion, monto))
             gasto_id = await cur.fetchone()
-            # ✅ CORREGIDO: Remover commit - aiopg lo hace automáticamente
+            await cur.execute("COMMIT")
             logger.info(f"Gasto registrado con ID: {gasto_id[0]}")
             return gasto_id[0]
 
@@ -148,7 +148,7 @@ async def deshacer_ultimo_pago() -> tuple:
             if ultimo_pago:
                 pago_id, inquilino, monto = ultimo_pago
                 await cur.execute("DELETE FROM pagos WHERE id = %s", (pago_id,))
-                # ✅ CORREGIDO: Remover commit
+                await cur.execute("COMMIT")
                 logger.info(f"Pago con ID {pago_id} eliminado.")
                 return inquilino, monto
             
@@ -164,7 +164,7 @@ async def deshacer_ultimo_gasto() -> tuple:
             if ultimo_gasto:
                 gasto_id, descripcion, monto = ultimo_gasto
                 await cur.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
-                # ✅ CORREGIDO: Remover commit
+                await cur.execute("COMMIT")
                 logger.info(f"Gasto con ID {gasto_id} eliminado.")
                 return descripcion, monto
             
@@ -175,8 +175,8 @@ async def delete_pago_by_id(pago_id: int) -> bool:
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("DELETE FROM pagos WHERE id = %s", (pago_id,))
-            # ✅ CORREGIDO: Remover commit
             if cur.rowcount > 0:
+                await cur.execute("COMMIT")
                 logger.info(f"Pago con ID {pago_id} eliminado.")
                 return True
             return False
@@ -186,8 +186,8 @@ async def delete_gasto_by_id(gasto_id: int) -> bool:
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
-            # ✅ CORREGIDO: Remover commit
             if cur.rowcount > 0:
+                await cur.execute("COMMIT")
                 logger.info(f"Gasto con ID {gasto_id} eliminado.")
                 return True
             return False
@@ -252,7 +252,7 @@ async def crear_inquilino(nombre: str) -> int:
         async with conn.cursor() as cur:
             await cur.execute("INSERT INTO inquilinos (nombre) VALUES (%s) RETURNING id", (nombre,))
             inquilino_id = await cur.fetchone()
-            # ✅ CORREGIDO: Remover commit
+            await cur.execute("COMMIT")
             logger.info(f"Inquilino '{nombre}' creado con ID: {inquilino_id[0]}")
             return inquilino_id[0]
 
@@ -280,7 +280,8 @@ async def cambiar_estado_inquilino(inquilino_id: int, estado: bool) -> bool:
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("UPDATE inquilinos SET activo = %s WHERE id = %s", (estado, inquilino_id))
-            # ✅ CORREGIDO: Remover commit
+            if cur.rowcount > 0:
+                await cur.execute("COMMIT")
             return cur.rowcount > 0
 
 async def actualizar_dia_pago_inquilino(inquilino_id: int, dia_pago: int) -> bool:
@@ -288,8 +289,8 @@ async def actualizar_dia_pago_inquilino(inquilino_id: int, dia_pago: int) -> boo
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("UPDATE inquilinos SET dia_pago = %s WHERE id = %s", (dia_pago, inquilino_id))
-            # ✅ CORREGIDO: Remover commit
             if cur.rowcount > 0:
+                await cur.execute("COMMIT")
                 logger.info(f"Día de pago actualizado para inquilino ID {inquilino_id}.")
                 return True
             return False
