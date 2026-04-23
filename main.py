@@ -165,13 +165,12 @@ async def main():
     application.add_error_handler(error_handler)
 
     # === TAREA AUTOMÁTICA: Recordatorios diarios ===
-    # Enviar recordatorios de pago a las 08:00 AM
-    if AUTHORIZED_USERS:
-        application.job_queue.run_daily(
-            enviar_recordatorios_pago,
-            time=time(hour=8, minute=0),
-            job_kwargs={"chat_id": AUTHORIZED_USERS[0]}
-        )
+    # ✅ DESHABILITADA POR AHORA - Se implementará correctamente después
+    # if AUTHORIZED_USERS:
+    #     application.job_queue.run_daily(
+    #         enviar_recordatorios_pago,
+    #         time=time(hour=8, minute=0)
+    #     )
 
     logger.info("Bot iniciado correctamente.")
 

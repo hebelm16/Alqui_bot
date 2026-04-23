@@ -689,7 +689,7 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
             mensaje += rf"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
 
     context.user_data['transactions_map'] = transactions_map
-    mensaje += r"\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)"
+    mensaje += r"\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\n"
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_cancel_keyboard())
     return EDITAR_SELECCIONAR_TRANSACCION
@@ -755,11 +755,15 @@ async def editar_ejecutar_borrado(update: Update, context: ContextTypes.DEFAULT_
 # === Tareas Automáticas de Recordatorios ===
 async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Tarea automática para enviar recordatorios de pagos vencidos/próximos."""
-    chat_id = getattr(getattr(context, "job", None), "chat_id", None)
-    if chat_id is None:
-        logger.error("No se pudo obtener chat_id para enviar recordatorios.")
-        return
     try:
+        # ✅ CORREGIDO: Obtener chat_id del job context
+        job = context.job
+        if not job or not hasattr(job, 'chat_id'):
+            logger.error("No se pudo obtener chat_id para enviar recordatorios.")
+            return
+        
+        chat_id = job.chat_id
+        
         recordatorios = await obtener_inquilinos_para_recordatorio()
         vencidos = recordatorios.get("vencidos", [])
         proximos = recordatorios.get("proximos", [])
@@ -768,7 +772,7 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
             logger.info("No hay recordatorios de pago para enviar hoy.")
             return
 
-        # ✅ CORREGIDO: Sin raw string, con saltos de línea normales
+        # ✅ CORREGIDO: Mensaje sin raw string
         mensaje = "🔔 *Recordatorios de Pago* 🔔\n\n"
 
         if vencidos:
@@ -782,15 +786,22 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
             for nombre in proximos:
                 mensaje += f"\\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\\.\n"
         
-        await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode=ParseMode.MARKDOWN_V2)
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=mensaje, 
+            parse_mode=ParseMode.MARKDOWN_V2
+        )
         logger.info(f"Recordatorios de pago enviados a {chat_id}.")
 
     except Exception as e:
         logger.error(f"Error en la tarea de enviar recordatorios: {e}", exc_info=True)
         try:
-            await context.bot.send_message(chat_id=chat_id, text="Ocurrió un error inesperado al procesar los recordatorios de pago.")
+            await context.bot.send_message(
+                chat_id=context.job.chat_id if context.job and hasattr(context.job, 'chat_id') else None,
+                text="Ocurrió un error inesperado al procesar los recordatorios de pago."
+            )
         except Exception as send_e:
-            logger.error(f"No se pudo enviar el mensaje de error de recordatorio al chat_id {chat_id}: {send_e}", exc_info=True)
+            logger.error(f"No se pudo enviar el mensaje de error de recordatorio: {send_e}", exc_info=True)
 
 # === Otros Handlers ===
 async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
