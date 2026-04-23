@@ -603,12 +603,15 @@ async def editar_mes_actual(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     return await editar_listar_transacciones(update, context, hoy.month, hoy.year)
 
 async def editar_pedir_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handler para pedir mes personalizado."""
-    await update.message.reply_text("Por favor, introduce el número del mes (1-12):", reply_markup=create_cancel_keyboard())
-    return EDITAR_PEDIR_ANIO
+    """Handler para pedir mes personalizado de informe."""
+    await update.message.reply_text(
+        "Por favor, introduce el número del mes (1-12):",
+        reply_markup=create_cancel_keyboard()  # ✅ AGREGADO
+    )
+    return INFORME_ANIO
 
 async def editar_pedir_anio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handler para validar mes y pedir año."""
+    """Handler para validar mes de informe y pedir año."""
     texto = update.message.text.strip()
     
     # ✅ VALIDAR CANCELACIÓN PRIMERO
@@ -859,7 +862,10 @@ async def informe_mes_actual(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def informe_pedir_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para pedir mes personalizado de informe."""
-    await update.message.reply_text("Por favor, introduce el número del mes (1-12):")
+    await update.message.reply_text(
+        "Por favor, introduce el número del mes (1-12):",
+        reply_markup=create_cancel_keyboard()  # ✅ AGREGADO
+    )
     return INFORME_ANIO
 
 async def informe_pedir_anio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

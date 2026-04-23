@@ -109,7 +109,7 @@ async def main():
             INQUILINO_SET_DIA_PAGO_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_dia_pago_select_inquilino)],
             INQUILINO_SET_DIA_PAGO_SAVE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_dia_pago_save)],
         },
-        fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), gestionar_inquilinos_menu)],
+        fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
     ))
 
     # === HANDLER: Editar/Borrar ===
