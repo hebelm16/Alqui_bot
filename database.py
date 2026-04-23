@@ -122,6 +122,7 @@ async def registrar_pago(fecha: str, inquilino: str, monto: Decimal) -> int:
         async with conn.cursor() as cur:
             await cur.execute("INSERT INTO pagos (fecha, inquilino, monto) VALUES (%s, %s, %s) RETURNING id", (fecha, inquilino, monto))
             pago_id = await cur.fetchone()
+            await conn.commit()  # ✅ AGREGADO: Commit explícito
             logger.info(f"Pago registrado con ID: {pago_id[0]}")
             return pago_id[0]
 
@@ -129,9 +130,9 @@ async def registrar_gasto(fecha: str, descripcion: str, monto: Decimal) -> int:
     """Registra un nuevo gasto en la base de datos."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            # ✅ CORREGIDO: Sin especificar ID, PostgreSQL lo genera automáticamente
             await cur.execute("INSERT INTO gastos (fecha, descripcion, monto) VALUES (%s, %s, %s) RETURNING id", (fecha, descripcion, monto))
             gasto_id = await cur.fetchone()
+            await conn.commit()  # ✅ AGREGADO: Commit explícito
             logger.info(f"Gasto registrado con ID: {gasto_id[0]}")
             return gasto_id[0]
 
@@ -141,41 +142,33 @@ async def deshacer_ultimo_pago() -> tuple:
     """Elimina el último pago registrado y devuelve sus detalles de forma atómica."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            await cur.execute("BEGIN")
-            try:
-                await cur.execute("SELECT id, inquilino, monto FROM pagos ORDER BY id DESC LIMIT 1 FOR UPDATE")
-                if ultimo_pago := await cur.fetchone():
-                    pago_id, inquilino, monto = ultimo_pago
-                    await cur.execute("DELETE FROM pagos WHERE id = %s", (pago_id,))
-                    logger.info(f"Pago con ID {pago_id} eliminado.")
-                    await cur.execute("COMMIT")
-                    return inquilino, monto
-                
-                await cur.execute("COMMIT")
-                return None, None
-            except Exception:
-                await cur.execute("ROLLBACK")
-                raise
+            await cur.execute("SELECT id, inquilino, monto FROM pagos ORDER BY id DESC LIMIT 1")
+            ultimo_pago = await cur.fetchone()
+            
+            if ultimo_pago:
+                pago_id, inquilino, monto = ultimo_pago
+                await cur.execute("DELETE FROM pagos WHERE id = %s", (pago_id,))
+                await conn.commit()  # ✅ AGREGADO: Commit explícito
+                logger.info(f"Pago con ID {pago_id} eliminado.")
+                return inquilino, monto
+            
+            return None, None
 
 async def deshacer_ultimo_gasto() -> tuple:
     """Elimina el último gasto registrado y devuelve sus detalles de forma atómica."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            await cur.execute("BEGIN")
-            try:
-                await cur.execute("SELECT id, descripcion, monto FROM gastos ORDER BY id DESC LIMIT 1 FOR UPDATE")
-                if ultimo_gasto := await cur.fetchone():
-                    gasto_id, descripcion, monto = ultimo_gasto
-                    await cur.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
-                    logger.info(f"Gasto con ID {gasto_id} eliminado.")
-                    await cur.execute("COMMIT")
-                    return descripcion, monto
-                
-                await cur.execute("COMMIT")
-                return None, None
-            except Exception:
-                await cur.execute("ROLLBACK")
-                raise
+            await cur.execute("SELECT id, descripcion, monto FROM gastos ORDER BY id DESC LIMIT 1")
+            ultimo_gasto = await cur.fetchone()
+            
+            if ultimo_gasto:
+                gasto_id, descripcion, monto = ultimo_gasto
+                await cur.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
+                await conn.commit()  # ✅ AGREGADO: Commit explícito
+                logger.info(f"Gasto con ID {gasto_id} eliminado.")
+                return descripcion, monto
+            
+            return None, None
 
 # --- Funciones para informes ---
 
@@ -237,6 +230,7 @@ async def crear_inquilino(nombre: str) -> int:
         async with conn.cursor() as cur:
             await cur.execute("INSERT INTO inquilinos (nombre) VALUES (%s) RETURNING id", (nombre,))
             inquilino_id = await cur.fetchone()
+            await conn.commit()  # ✅ AGREGADO: Commit explícito
             logger.info(f"Inquilino '{nombre}' creado con ID: {inquilino_id[0]}")
             return inquilino_id[0]
 
@@ -264,6 +258,7 @@ async def cambiar_estado_inquilino(inquilino_id: int, estado: bool) -> bool:
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("UPDATE inquilinos SET activo = %s WHERE id = %s", (estado, inquilino_id))
+            await conn.commit()  # ✅ AGREGADO: Commit explícito
             return cur.rowcount > 0
 
 async def actualizar_dia_pago_inquilino(inquilino_id: int, dia_pago: int) -> bool:
@@ -271,6 +266,7 @@ async def actualizar_dia_pago_inquilino(inquilino_id: int, dia_pago: int) -> boo
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("UPDATE inquilinos SET dia_pago = %s WHERE id = %s", (dia_pago, inquilino_id))
+            await conn.commit()  # ✅ AGREGADO: Commit explícito
             if cur.rowcount > 0:
                 logger.info(f"Día de pago actualizado para inquilino ID {inquilino_id}.")
                 return True
@@ -345,6 +341,7 @@ async def delete_pago_by_id(pago_id: int) -> bool:
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("DELETE FROM pagos WHERE id = %s", (pago_id,))
+            await conn.commit()  # ✅ AGREGADO: Commit explícito
             if cur.rowcount > 0:
                 logger.info(f"Pago con ID {pago_id} eliminado.")
                 return True
@@ -355,6 +352,7 @@ async def delete_gasto_by_id(gasto_id: int) -> bool:
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
+            await conn.commit()  # ✅ AGREGADO: Commit explícito
             if cur.rowcount > 0:
                 logger.info(f"Gasto con ID {gasto_id} eliminado.")
                 return True

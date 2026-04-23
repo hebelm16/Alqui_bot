@@ -69,8 +69,17 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         tipo: 'pago' o 'gasto'
     """
     try:
-        monto = context.user_data['monto']
-        detalle = context.user_data['detalle']
+        monto = context.user_data.get('monto')
+        detalle = context.user_data.get('detalle')
+        
+        if not monto or not detalle:
+            logger.warning(f"Datos incompletos para registrar {tipo}")
+            await update.message.reply_text(
+                "❌ Error: Datos incompletos. Por favor, intenta de nuevo.",
+                reply_markup=create_main_menu_keyboard()
+            )
+            return MENU
+
         fecha_registro = date.today()
         mensaje_adicional = ""
 
@@ -80,58 +89,101 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 "❌ El monto debe ser mayor a cero. Por favor, intenta de nuevo.",
                 reply_markup=create_main_menu_keyboard()
             )
-            return
+            context.user_data.clear()
+            return MENU
 
-        if tipo == 'pago':
-            fecha_pago_efectiva = await obtener_mes_pago_pendiente(detalle)
-            if fecha_pago_efectiva:
-                fecha_registro = fecha_pago_efectiva
-                mensaje_adicional = rf"\n\n_Nota: El pago se ha registrado para el período pendiente de {md(fecha_registro.strftime('%B de %Y'))}\._"
+        try:
+            if tipo == 'pago':
+                # ✅ CORREGIDO: Manejo seguro de obtener_mes_pago_pendiente
+                try:
+                    fecha_pago_efectiva = await obtener_mes_pago_pendiente(detalle)
+                    if fecha_pago_efectiva:
+                        fecha_registro = fecha_pago_efectiva
+                        mensaje_adicional = rf"\n\n_Nota: El pago se ha registrado para el período pendiente de {md(fecha_registro.strftime('%B de %Y'))}\._"
+                except Exception as e:
+                    logger.warning(f"No se pudo obtener mes de pago pendiente para {detalle}: {e}")
+                    # Continuar sin mensaje adicional
+                
+                await registrar_pago(fecha_registro, detalle, monto)
+                mensaje = (
+                    f"✅ Pago registrado correctamente:\n"
+                    f"📅 Fecha de Pago: {md(fecha_registro.strftime('%d/%m/%Y'))}\n"
+                    f"👤 Nombre: {md(detalle)}\n"
+                    f"💵 Monto: {md(format_currency(monto))}"
+                    f"{mensaje_adicional}"
+                )
+            elif tipo == 'gasto':
+                await registrar_gasto(fecha_registro, detalle, monto)
+                mensaje = (
+                    f"✅ Gasto registrado correctamente:\n"
+                    f"📅 Fecha: {fecha_registro.strftime('%d/%m/%Y')}\n"
+                    f"📝 Descripción: {md(detalle)}\n"
+                    f"💸 Monto: {md(format_currency(monto))}"
+                )
+            else:
+                logger.error(f"Tipo de transacción desconocido: {tipo}")
+                await update.message.reply_text(
+                    "❌ Error: Tipo de transacción desconocido.",
+                    reply_markup=create_main_menu_keyboard()
+                )
+                context.user_data.clear()
+                return MENU
+
+            # ✅ CORREGIDO: Asegurar que el mensaje se envía correctamente
+            await update.message.reply_text(
+                mensaje, 
+                parse_mode=ParseMode.MARKDOWN_V2, 
+                reply_markup=create_main_menu_keyboard()
+            )
+            logger.info(f"{tipo.capitalize()} registrado exitosamente para {detalle}")
+
+        except UniqueViolation as e:
+            # ✅ ARREGLADO: Mensaje dinámico según el tipo de transacción
+            if tipo == 'pago':
+                error_msg = rf"❌ Ya existe un pago registrado para *{md(detalle)}* en la fecha de hoy\. Si quieres modificarlo, usa la opción 'Deshacer'\."
+            elif tipo == 'gasto':
+                error_msg = rf"❌ Error al registrar el gasto\. Intenta nuevamente o usa la opción 'Editar/Borrar' si necesitas modificarlo\."
+            else:
+                error_msg = r"❌ Ya existe un registro similar\. Si quieres modificarlo, usa el menú de opciones\."
             
-            await registrar_pago(fecha_registro, detalle, monto)
-            mensaje = (
-                f"✅ Pago registrado correctamente:\n"
-                f"📅 Fecha de Pago: {md(fecha_registro.strftime('%d/%m/%Y'))}\n"
-                f"👤 Nombre: {md(detalle)}\n"
-                f"💵 Monto: {md(format_currency(monto))}"
-                f"{mensaje_adicional}"
+            logger.warning(f"UniqueViolation al registrar {tipo}: {detalle} - {e}")
+            await update.message.reply_text(
+                error_msg,
+                parse_mode=ParseMode.MARKDOWN_V2,
+                reply_markup=create_main_menu_keyboard()
             )
-        elif tipo == 'gasto':
-            await registrar_gasto(fecha_registro, detalle, monto)
-            mensaje = (
-                f"✅ Gasto registrado correctamente:\n"
-                f"📅 Fecha: {fecha_registro.strftime('%d/%m/%Y')}\n"
-                f"📝 Descripción: {md(detalle)}\n"
-                f"💸 Monto: {md(format_currency(monto))}"
+        except psycopg2.Error as e:
+            logger.error(f"Error de base de datos al registrar {tipo}: {e}", exc_info=True)
+            await update.message.reply_text(
+                f"❌ Hubo un error con la base de datos al registrar el {tipo}.",
+                reply_markup=create_main_menu_keyboard()
             )
-        else:
-            return
+        except Exception as e:
+            logger.error(f"Error inesperado al registrar {tipo}: {e}", exc_info=True)
+            await update.message.reply_text(
+                f"❌ Hubo un error inesperado al registrar el {tipo}. Por favor, intenta de nuevo.",
+                reply_markup=create_main_menu_keyboard()
+            )
 
-        await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_main_menu_keyboard())
-
-    except UniqueViolation as e:
-        # ✅ ARREGLADO: Mensaje dinámico según el tipo de transacción
-        if tipo == 'pago':
-            error_msg = rf"❌ Ya existe un pago registrado para *{md(detalle)}* en la fecha de hoy\. Si quieres modificarlo, usa la opción 'Deshacer'\."
-        elif tipo == 'gasto':
-            error_msg = rf"❌ Error al registrar el gasto\. Intenta nuevamente o usa la opción 'Editar/Borrar' si necesitas modificarlo\."
-        else:
-            error_msg = r"❌ Ya existe un registro similar\. Si quieres modificarlo, usa el menú de opciones\."
-        
-        logger.warning(f"UniqueViolation al registrar {tipo}: {detalle} - {e}")
-        await update.message.reply_text(
-            error_msg,
-            parse_mode=ParseMode.MARKDOWN_V2,
-            reply_markup=create_main_menu_keyboard()
-        )
-    except psycopg2.Error as e:
-        logger.error(f"Error de base de datos al registrar {tipo}: {e}", exc_info=True)
-        await update.message.reply_text(f"❌ Hubo un error con la base de datos al registrar el {tipo}.", reply_markup=create_main_menu_keyboard())
     except Exception as e:
-        logger.error(f"Error inesperado al registrar {tipo}: {e}", exc_info=True)
-        await update.message.reply_text(f"❌ Hubo un error inesperado al registrar el {tipo}.", reply_markup=create_main_menu_keyboard())
+        logger.error(f"Error crítico en _save_transaction: {e}", exc_info=True)
+        try:
+            await update.message.reply_text(
+                "❌ Ocurrió un error crítico. Volviendo al menú principal.",
+                reply_markup=create_main_menu_keyboard()
+            )
+        except Exception as send_error:
+            logger.error(f"No se pudo enviar mensaje de error: {send_error}", exc_info=True)
+    
     finally:
-        context.user_data.clear()
+        # ✅ IMPORTANTE: Limpiar datos del usuario SIEMPRE
+        if 'monto' in context.user_data:
+            del context.user_data['monto']
+        if 'detalle' in context.user_data:
+            del context.user_data['detalle']
+        logger.debug(f"Datos de usuario limpios después de registrar {tipo}")
+
+    return MENU
 
 # === Handlers Principales ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -212,18 +264,36 @@ async def pago_nombre_otro(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def pago_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler de monto de pago - Valida y guarda."""
-    texto = update.message.text.strip()
     try:
+        texto = update.message.text.strip()
         monto = Decimal(texto.replace(",", "").replace("RD$", "").strip())
+        
         if monto <= 0:
-            await update.message.reply_text("❌ El monto debe ser mayor a cero. Intenta de nuevo:")
+            await update.message.reply_text(
+                "❌ El monto debe ser mayor a cero. Intenta de nuevo:",
+                reply_markup=create_cancel_keyboard()
+            )
             return PAGO_MONTO
+        
         context.user_data['monto'] = monto
         await _save_transaction(update, context, 'pago')
         return MENU
-    except InvalidOperation:
-        await update.message.reply_text("Monto inválido. Intenta de nuevo con un número válido (ej: 3000):")
+        
+    except (InvalidOperation, ValueError, AttributeError) as e:
+        logger.warning(f"Error al parsear monto de pago: {e}")
+        await update.message.reply_text(
+            "❌ Monto inválido. Intenta de nuevo con un número válido (ej: 3000):",
+            reply_markup=create_cancel_keyboard()
+        )
         return PAGO_MONTO
+    except Exception as e:
+        logger.error(f"Error inesperado en pago_monto: {e}", exc_info=True)
+        await update.message.reply_text(
+            "❌ Ocurrió un error. Volviendo al menú principal.",
+            reply_markup=create_main_menu_keyboard()
+        )
+        context.user_data.clear()
+        return MENU
 
 # === Flujo Registrar Gasto ===
 async def gasto_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -248,16 +318,29 @@ async def gasto_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
 async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler de descripción de gasto - Valida y guarda."""
-    descripcion = update.message.text.strip()
-    
-    # ✅ VALIDACIÓN: Descripción vacía
-    if not descripcion or len(descripcion) < 3:
-        await update.message.reply_text("❌ La descripción debe tener al menos 3 caracteres. Intenta de nuevo:")
-        return GASTO_DESC
-    
-    context.user_data['detalle'] = descripcion
-    await _save_transaction(update, context, 'gasto')
-    return MENU
+    try:
+        descripcion = update.message.text.strip()
+        
+        # ✅ VALIDACIÓN: Descripción vacía
+        if not descripcion or len(descripcion) < 3:
+            await update.message.reply_text(
+                "❌ La descripción debe tener al menos 3 caracteres. Intenta de nuevo:",
+                reply_markup=create_cancel_keyboard()
+            )
+            return GASTO_DESC
+        
+        context.user_data['detalle'] = descripcion
+        await _save_transaction(update, context, 'gasto')
+        return MENU
+        
+    except Exception as e:
+        logger.error(f"Error inesperado en gasto_desc: {e}", exc_info=True)
+        await update.message.reply_text(
+            "❌ Ocurrió un error. Volviendo al menú principal.",
+            reply_markup=create_main_menu_keyboard()
+        )
+        context.user_data.clear()
+        return MENU
 
 # === Flujo Gestionar Inquilinos ===
 def create_inquilinos_menu_keyboard() -> ReplyKeyboardMarkup:
