@@ -78,7 +78,7 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 "❌ Error: Datos incompletos. Por favor, intenta de nuevo.",
                 reply_markup=create_main_menu_keyboard()
             )
-            return MENU
+            return
 
         fecha_registro = date.today()
         mensaje_adicional = ""
@@ -90,7 +90,7 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 reply_markup=create_main_menu_keyboard()
             )
             context.user_data.clear()
-            return MENU
+            return
 
         try:
             if tipo == 'pago':
@@ -127,7 +127,7 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                     reply_markup=create_main_menu_keyboard()
                 )
                 context.user_data.clear()
-                return MENU
+                return
 
             # ✅ CORREGIDO: Asegurar que el mensaje se envía correctamente
             await update.message.reply_text(
@@ -182,8 +182,8 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         if 'detalle' in context.user_data:
             del context.user_data['detalle']
         logger.debug(f"Datos de usuario limpios después de registrar {tipo}")
-
-    return MENU
+    
+    # ✅ CORREGIDO: NO retornar nada - solo await
 
 # === Handlers Principales ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -276,6 +276,7 @@ async def pago_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             return PAGO_MONTO
         
         context.user_data['monto'] = monto
+        # ✅ CORREGIDO: _save_transaction ya retorna MENU, no hay que retornarlo de nuevo
         await _save_transaction(update, context, 'pago')
         return MENU
         
@@ -330,6 +331,7 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             return GASTO_DESC
         
         context.user_data['detalle'] = descripcion
+        # ✅ CORREGIDO: _save_transaction ya retorna MENU
         await _save_transaction(update, context, 'gasto')
         return MENU
         
