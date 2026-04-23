@@ -1,19 +1,21 @@
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
+import os
+import sys
 import logging
 from datetime import time
-import asyncio
-import os
 
 # En Windows, se requiere una política de eventos específica para aiopg
 if os.name == 'nt':
+    import asyncio
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
 from config import BOT_TOKEN, AUTHORIZED_USERS
 from database import inicializar_db, init_pool, close_pool
 from handlers import (
-    start, volver_menu, 
+    # Handlers principales
+    start, volver_menu, error_handler,
     # Pago
-    pago_inicio, pago_select_inquilino, pago_nombre_otro, pago_monto,  # ✅ AGREGADO: pago_nombre_otro
+    pago_inicio, pago_select_inquilino, pago_nombre_otro, pago_monto,
     # Gasto
     gasto_inicio, gasto_monto, gasto_desc,
     # Inquilinos
@@ -26,9 +28,9 @@ from handlers import (
     # Otros
     ver_resumen, informe_inicio, informe_mes_actual, informe_pedir_mes, informe_pedir_anio,
     generar_informe_mensual_custom, deshacer_menu, deshacer_pago_handler, deshacer_gasto_handler,
-    volver_menu_principal, error_handler, enviar_recordatorios_pago,
+    volver_menu_principal, enviar_recordatorios_pago,
     # Estados
-    MENU, PAGO_SELECT_INQUILINO, PAGO_MONTO, PAGO_NOMBRE_OTRO, GASTO_MONTO, GASTO_DESC,  # ✅ AGREGADO: PAGO_NOMBRE_OTRO
+    MENU, PAGO_SELECT_INQUILINO, PAGO_MONTO, PAGO_NOMBRE_OTRO, GASTO_MONTO, GASTO_DESC,
     INFORME_MES, INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR,
     INQUILINO_MENU, INQUILINO_ADD_NOMBRE, INQUILINO_DEACTIVATE_SELECT,
     INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO, EDITAR_PEDIR_MES,
@@ -36,69 +38,148 @@ from handlers import (
     INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE
 )
 
-# Configuración de logging
+# Configurar logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+logger = logging.getLogger(__name__)
 
-def main() -> None:
-    """Inicia el bot y configura el manejo del ciclo de vida."""
-    if not BOT_TOKEN:
-        logging.critical("ERROR: No se encontró el token del bot. Define la variable de entorno BOT_TOKEN.")
-        exit(1)
+async def main():
+    """Función principal para iniciar el bot."""
+    # Inicializar pool de base de datos
+    await init_pool()
+    await inicializar_db()
 
-    async def post_init_with_db(application: Application):
-        """Función asíncrona para ejecutar después de la inicialización de la aplicación."""
-        await init_pool()
-        await inicializar_db()
-        logging.info("Pool de DB y tablas inicializados.")
+    # Crear la aplicación
+    application = Application.builder().token(BOT_TOKEN).build()
 
-    app = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .post_init(post_init_with_db)
-        .post_shutdown(close_pool)
-        .build()
-    )
+    # === HANDLER: /start ===
+    application.add_handler(CommandHandler("start", start))
 
-    conv_handler = ConversationHandler(
+    # === HANDLER: Registrar Pago ===
+    application.add_handler(ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("^📥 Registrar Pago$"), pago_inicio)],
         states={
-            # ✅ AGREGAR este nuevo estado
-            PAGO_NOMBRE_OTRO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_nombre_otro)],
             PAGO_SELECT_INQUILINO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_select_inquilino)],
+            PAGO_NOMBRE_OTRO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_nombre_otro)],
             PAGO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_monto)],
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
+    ))
+
+    # === HANDLER: Registrar Gasto ===
+    application.add_handler(ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^💸 Registrar Gasto$"), gasto_inicio)],
+        states={
+            GASTO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_monto)],
+            GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_desc)],
+        },
+        fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
+    ))
+
+    # === HANDLER: Gestionar Inquilinos ===
+    application.add_handler(ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^👤 Gestionar Inquilinos$"), gestionar_inquilinos_menu)],
+        states={
+            INQUILINO_MENU: [
+                MessageHandler(filters.Regex("^➕ Añadir Inquilino$"), add_inquilino_prompt),
+                MessageHandler(filters.Regex("^📋 Listar Inquilinos$"), list_inquilinos),
+                MessageHandler(filters.Regex("^❌ Desactivar Inquilino$"), deactivate_inquilino_prompt),
+                MessageHandler(filters.Regex("^✅ Activar Inquilino$"), activate_inquilino_prompt),
+                MessageHandler(filters.Regex("^🗓️ Asignar Día de Pago$"), set_dia_pago_start),
+                MessageHandler(filters.Regex("^⬅️ Volver al Menú Principal$"), volver_menu_principal),
+            ],
+            INQUILINO_ADD_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_inquilino_save)],
+            INQUILINO_DEACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, deactivate_inquilino_update)],
+            INQUILINO_ACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, activate_inquilino_update)],
+            INQUILINO_SET_DIA_PAGO_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_dia_pago_select_inquilino)],
+            INQUILINO_SET_DIA_PAGO_SAVE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_dia_pago_save)],
+        },
+        fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), gestionar_inquilinos_menu)],
+    ))
+
+    # === HANDLER: Editar/Borrar ===
+    application.add_handler(ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^✏️ Editar/Borrar$"), editar_inicio)],
+        states={
+            EDITAR_INICIO: [
+                MessageHandler(filters.Regex("^Mes Actual$"), editar_mes_actual),
+                MessageHandler(filters.Regex("^Elegir Mes y Año$"), editar_pedir_mes),
+            ],
+            EDITAR_PEDIR_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_pedir_anio)],
+            EDITAR_PEDIR_MES: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_listar_transacciones_custom)],
+            EDITAR_SELECCIONAR_TRANSACCION: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_seleccionar_transaccion)],
+            EDITAR_CONFIRMAR_BORRADO: [
+                MessageHandler(filters.Regex("^Sí, borrar$"), editar_ejecutar_borrado),
+                MessageHandler(filters.Regex("^No, cancelar$"), volver_menu),
+            ],
+        },
+        fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
+    ))
+
+    # === HANDLER: Ver Resumen ===
+    application.add_handler(MessageHandler(filters.Regex("^📊 Ver Resumen$"), ver_resumen))
+
+    # === HANDLER: Generar Informe ===
+    application.add_handler(ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^📈 Generar Informe$"), informe_inicio)],
+        states={
+            INFORME_MES: [
+                MessageHandler(filters.Regex("^Informe Mes Actual$"), informe_mes_actual),
+                MessageHandler(filters.Regex("^Elegir Mes y Año$"), informe_pedir_mes),
+            ],
+            INFORME_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, informe_pedir_anio)],
+            INFORME_GENERAR: [MessageHandler(filters.TEXT & ~filters.COMMAND, generar_informe_mensual_custom)],
+        },
+        fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
+    ))
+
+    # === HANDLER: Deshacer ===
+    application.add_handler(ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^🗑️ Deshacer$"), deshacer_menu)],
+        states={
+            DESHACER_MENU: [
+                MessageHandler(filters.Regex("^🗑️ Deshacer Último Pago$"), deshacer_pago_handler),
+                MessageHandler(filters.Regex("^🗑️ Deshacer Último Gasto$"), deshacer_gasto_handler),
+                MessageHandler(filters.Regex("^⬅️ Volver al Menú$"), volver_menu),
+            ],
+        },
+        fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
+    ))
+
+    # === HANDLER DE ERROR ===
+    application.add_error_handler(error_handler)
+
+    # === TAREA AUTOMÁTICA: Recordatorios diarios ===
+    # Enviar recordatorios de pago a las 08:00 AM
+    application.job_queue.run_daily(
+        enviar_recordatorios_pago,
+        time=time(hour=8, minute=0),
+        job_kwargs={"chat_id": AUTHORIZED_USERS[0] if AUTHORIZED_USERS else None}
     )
 
-    app.add_handler(conv_handler)
-    app.add_error_handler(error_handler)
+    logger.info("Bot iniciado correctamente.")
 
-    # Programar la tarea de recordatorios diarios
-    job_queue = app.job_queue
-    if job_queue:
-        # Tarea temporal para probar los recordatorios al iniciar
-        job_queue.run_once(
-            enviar_recordatorios_pago,
-            when=10,  # 10 segundos
-            chat_id=AUTHORIZED_USERS[0],
-            name="test_recordatorio_inicio"
-        )
-        logging.info("Tarea de prueba de recordatorios programada para ejecutarse en 10 segundos.")
+    # Iniciar el bot
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling(allowed_updates=['message', 'callback_query'])
 
-        job_queue.run_daily(
-            enviar_recordatorios_pago,
-            time=time(hour=13, minute=0, second=0),  # 9:00 AM en Santo Domingo (UTC-4)
-            chat_id=AUTHORIZED_USERS[0],
-            name="recordatorio_pago_diario"
-        )
-        logging.info("Tarea de recordatorios de pago programada diariamente a las 13:00 UTC.")
-
-    print("Bot iniciado correctamente! Presiona Ctrl+C para detener.")
-    
-    app.run_polling()
+    try:
+        await application.updater.idle()
+    finally:
+        # Cerrar el pool de base de datos
+        await close_pool()
+        await application.stop()
 
 if __name__ == '__main__':
-    main()
+    try:
+        import asyncio
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot detenido por el usuario.")
+        sys.exit(0)
+    except Exception as e:
+        logger.critical(f"Error crítico al iniciar el bot: {e}", exc_info=True)
+        sys.exit(1)

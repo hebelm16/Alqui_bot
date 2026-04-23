@@ -228,6 +228,10 @@ async def pago_select_inquilino(update: Update, context: ContextTypes.DEFAULT_TY
     """Handler de selección de inquilino para pago."""
     nombre = update.message.text.strip()
     
+    # ✅ VALIDAR CANCELACIÓN PRIMERO
+    if nombre == "❌ Cancelar":
+        return await volver_menu(update, context)
+    
     # ✅ NUEVO: Detectar si seleccionó "Otro"
     if nombre == "🔤 Otro (Nombre personalizado)":
         await update.message.reply_text(
@@ -247,6 +251,10 @@ async def pago_nombre_otro(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     """Handler para ingresar nombre personalizado de pagador."""
     nombre = update.message.text.strip()
     
+    # ✅ VALIDAR CANCELACIÓN PRIMERO
+    if nombre == "❌ Cancelar":
+        return await volver_menu(update, context)
+    
     # ✅ VALIDACIÓN: Nombre no vacío
     if not nombre or len(nombre) < 2:
         await update.message.reply_text(
@@ -264,8 +272,13 @@ async def pago_nombre_otro(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def pago_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler de monto de pago - Valida y guarda."""
+    texto = update.message.text.strip()
+    
+    # ✅ VALIDAR CANCELACIÓN PRIMERO
+    if texto == "❌ Cancelar":
+        return await volver_menu(update, context)
+    
     try:
-        texto = update.message.text.strip()
         monto = Decimal(texto.replace(",", "").replace("RD$", "").strip())
         
         if monto <= 0:
@@ -276,7 +289,6 @@ async def pago_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             return PAGO_MONTO
         
         context.user_data['monto'] = monto
-        # ✅ CORREGIDO: _save_transaction ya retorna MENU, no hay que retornarlo de nuevo
         await _save_transaction(update, context, 'pago')
         return MENU
         
@@ -305,33 +317,56 @@ async def gasto_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def gasto_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler de monto de gasto - Valida e inicia descripción."""
     texto = update.message.text.strip()
+    
+    # ✅ VALIDAR CANCELACIÓN PRIMERO
+    if texto == "❌ Cancelar":
+        return await volver_menu(update, context)
+    
     try:
         monto = Decimal(texto.replace(",", "").replace("RD$", "").strip())
         if monto <= 0:
-            await update.message.reply_text("❌ El monto debe ser mayor a cero. Intenta de nuevo:")
+            await update.message.reply_text(
+                "❌ El monto debe ser mayor a cero. Intenta de nuevo:",
+                reply_markup=create_cancel_keyboard()
+            )
             return GASTO_MONTO
         context.user_data['monto'] = monto
         await update.message.reply_text(f"Monto registrado: {format_currency(monto)}\nAhora escribe la descripción del gasto:", reply_markup=create_cancel_keyboard())
         return GASTO_DESC
-    except InvalidOperation:
-        await update.message.reply_text("Monto inválido. Intenta de nuevo con un número válido (ej: 500):")
+    except (InvalidOperation, ValueError) as e:
+        logger.warning(f"Error al parsear monto de gasto: {e}")
+        await update.message.reply_text(
+            "❌ Monto inválido. Intenta de nuevo con un número válido (ej: 500):",
+            reply_markup=create_cancel_keyboard()
+        )
         return GASTO_MONTO
+    except Exception as e:
+        logger.error(f"Error inesperado en gasto_monto: {e}", exc_info=True)
+        await update.message.reply_text(
+            "❌ Ocurrió un error. Volviendo al menú principal.",
+            reply_markup=create_main_menu_keyboard()
+        )
+        context.user_data.clear()
+        return MENU
 
 async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler de descripción de gasto - Valida y guarda."""
+    texto = update.message.text.strip()
+    
+    # ✅ VALIDAR CANCELACIÓN PRIMERO
+    if texto == "❌ Cancelar":
+        return await volver_menu(update, context)
+    
     try:
-        descripcion = update.message.text.strip()
-        
         # ✅ VALIDACIÓN: Descripción vacía
-        if not descripcion or len(descripcion) < 3:
+        if not texto or len(texto) < 3:
             await update.message.reply_text(
                 "❌ La descripción debe tener al menos 3 caracteres. Intenta de nuevo:",
                 reply_markup=create_cancel_keyboard()
             )
             return GASTO_DESC
         
-        context.user_data['detalle'] = descripcion
-        # ✅ CORREGIDO: _save_transaction ya retorna MENU
+        context.user_data['detalle'] = texto
         await _save_transaction(update, context, 'gasto')
         return MENU
         
@@ -369,20 +404,29 @@ async def add_inquilino_save(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Handler para guardar nuevo inquilino."""
     nombre = update.message.text.strip()
     
+    # ✅ VALIDAR CANCELACIÓN PRIMERO
+    if nombre == "❌ Cancelar":
+        return await gestionar_inquilinos_menu(update, context)
+    
     # ✅ VALIDACIÓN: Nombre vacío
     if not nombre or len(nombre) < 3:
-        await update.message.reply_text("❌ El nombre debe tener al menos 3 caracteres. Intenta de nuevo:")
+        await update.message.reply_text(
+            "❌ El nombre debe tener al menos 3 caracteres. Intenta de nuevo:",
+            reply_markup=create_cancel_keyboard()
+        )
         return INQUILINO_ADD_NOMBRE
     
     try:
         await crear_inquilino(nombre)
         await update.message.reply_text(f"✅ Inquilino '{nombre}' añadido correctamente.", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
     except UniqueViolation:
-        await update.message.reply_text(f"❌ El inquilino '{nombre}' ya existe.", reply_markup=create_inquilinos_menu_keyboard())
+        await update.message.reply_text(f"❌ El inquilino '{nombre}' ya existe.", reply_markup=create_cancel_keyboard())
+        return INQUILINO_ADD_NOMBRE
     except psycopg2.Error as e:
         logger.error(f"Error de DB al añadir inquilino: {e}", exc_info=True)
         await update.message.reply_text("❌ Hubo un error con la base de datos.", reply_markup=create_inquilinos_menu_keyboard())
-    return INQUILINO_MENU
+        return INQUILINO_MENU
 
 async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para listar inquilinos."""
@@ -501,8 +545,15 @@ async def set_dia_pago_select_inquilino(update: Update, context: ContextTypes.DE
 
 async def set_dia_pago_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Guarda el día de pago para el inquilino seleccionado."""
+    texto = update.message.text.strip()
+    
+    # ✅ VALIDAR CANCELACIÓN PRIMERO
+    if texto == "❌ Cancelar":
+        context.user_data.clear()
+        return await gestionar_inquilinos_menu(update, context)
+    
     try:
-        dia_pago = int(update.message.text.strip())
+        dia_pago = int(texto)
         if not 1 <= dia_pago <= 31:
             raise ValueError("Día fuera de rango")
 
@@ -532,9 +583,8 @@ async def set_dia_pago_save(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     except Exception as e:
         logger.error(f"Error al guardar día de pago: {e}", exc_info=True)
         await update.message.reply_text("❌ Ocurrió un error inesperado.", reply_markup=create_inquilinos_menu_keyboard())
-
-    context.user_data.clear()
-    return INQUILINO_MENU
+        context.user_data.clear()
+        return INQUILINO_MENU
 
 # === Flujo Editar/Borrar ===
 async def editar_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -559,30 +609,54 @@ async def editar_pedir_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def editar_pedir_anio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para validar mes y pedir año."""
+    texto = update.message.text.strip()
+    
+    # ✅ VALIDAR CANCELACIÓN PRIMERO
+    if texto == "❌ Cancelar":
+        return await editar_inicio(update, context)
+    
     try:
-        mes = int(update.message.text.strip())
+        mes = int(texto)
         if not 1 <= mes <= 12:
-            await update.message.reply_text("Mes inválido. Por favor, introduce un número del 1 al 12.")
+            await update.message.reply_text(
+                "Mes inválido. Por favor, introduce un número del 1 al 12.",
+                reply_markup=create_cancel_keyboard()
+            )
             return EDITAR_PEDIR_ANIO
         context.user_data['edit_month'] = mes
         await update.message.reply_text("Ahora, introduce el año (ej: 2023):", reply_markup=create_cancel_keyboard())
         return EDITAR_PEDIR_MES
     except ValueError:
-        await update.message.reply_text("Entrada inválida. Por favor, introduce un número para el mes.")
+        await update.message.reply_text(
+            "Entrada inválida. Por favor, introduce un número para el mes.",
+            reply_markup=create_cancel_keyboard()
+        )
         return EDITAR_PEDIR_ANIO
 
 async def editar_listar_transacciones_custom(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para validar año personalizado."""
+    texto = update.message.text.strip()
+    
+    # ✅ VALIDAR CANCELACIÓN PRIMERO
+    if texto == "❌ Cancelar":
+        return await editar_inicio(update, context)
+    
     try:
-        anio = int(update.message.text.strip())
+        anio = int(texto)
         if not 1900 < anio < 2100:
-            await update.message.reply_text("Año inválido. Por favor, introduce un año válido (ej: 2023).")
+            await update.message.reply_text(
+                "Año inválido. Por favor, introduce un año válido (ej: 2023).",
+                reply_markup=create_cancel_keyboard()
+            )
             return EDITAR_PEDIR_MES
 
         mes = context.user_data.get('edit_month')
         return await editar_listar_transacciones(update, context, mes, anio)
     except (ValueError, KeyError):
-        await update.message.reply_text("Año inválido. Por favor, introduce un número para el año (ej: 2023).")
+        await update.message.reply_text(
+            "Año inválido. Por favor, introduce un número para el año (ej: 2023).",
+            reply_markup=create_cancel_keyboard()
+        )
         return EDITAR_PEDIR_MES
 
 async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFAULT_TYPE, mes: int, anio: int) -> int:
@@ -622,11 +696,21 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
 
 async def editar_seleccionar_transaccion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para seleccionar transacción a borrar."""
-    code = update.message.text.upper().strip()
+    texto = update.message.text.strip()
+    
+    # ✅ VALIDAR CANCELACIÓN PRIMERO
+    if texto == "❌ Cancelar":
+        context.user_data.clear()
+        return MENU
+    
+    code = texto.upper()
     transactions_map = context.user_data.get('transactions_map', {})
 
     if code not in transactions_map:
-        await update.message.reply_text("Código inválido. Por favor, introduce un código de la lista (ej: P1).")
+        await update.message.reply_text(
+            "Código inválido. Por favor, introduce un código de la lista (ej: P1).",
+            reply_markup=create_cancel_keyboard()
+        )
         return EDITAR_SELECCIONAR_TRANSACCION
 
     transaction = transactions_map[code]
@@ -634,7 +718,11 @@ async def editar_seleccionar_transaccion(update: Update, context: ContextTypes.D
 
     keyboard = [[KeyboardButton("Sí, borrar")], [KeyboardButton("No, cancelar")]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text(rf"¿Estás seguro de que quieres borrar la transacción `{md(code)}`\? Esta acción no se puede deshacer\.", parse_mode=ParseMode.MARKDOWN_V2, reply_markup=reply_markup)
+    await update.message.reply_text(
+        rf"¿Estás seguro de que quieres borrar la transacción `{md(code)}`\? Esta acción no se puede deshacer\.",
+        parse_mode=ParseMode.MARKDOWN_V2,
+        reply_markup=reply_markup
+    )
     return EDITAR_CONFIRMAR_BORRADO
 
 async def editar_ejecutar_borrado(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -765,24 +853,45 @@ async def informe_pedir_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 async def informe_pedir_anio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para validar mes de informe y pedir año."""
+    texto = update.message.text.strip()
+    
+    # ✅ VALIDAR CANCELACIÓN PRIMERO
+    if texto == "❌ Cancelar":
+        return await informe_inicio(update, context)
+    
     try:
-        mes = int(update.message.text.strip())
+        mes = int(texto)
         if not 1 <= mes <= 12:
-            await update.message.reply_text("Mes inválido. Por favor, introduce un número del 1 al 12.")
+            await update.message.reply_text(
+                "Mes inválido. Por favor, introduce un número del 1 al 12.",
+                reply_markup=create_cancel_keyboard()
+            )
             return INFORME_ANIO
         context.user_data['report_month'] = mes
-        await update.message.reply_text("Ahora, introduce el año (ej: 2023):")
+        await update.message.reply_text("Ahora, introduce el año (ej: 2023):", reply_markup=create_cancel_keyboard())
         return INFORME_GENERAR
     except ValueError:
-        await update.message.reply_text("Entrada inválida. Por favor, introduce un número para el mes.")
+        await update.message.reply_text(
+            "Entrada inválida. Por favor, introduce un número para el mes.",
+            reply_markup=create_cancel_keyboard()
+        )
         return INFORME_ANIO
 
 async def generar_informe_mensual_custom(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para validar año de informe personalizado."""
+    texto = update.message.text.strip()
+    
+    # ✅ VALIDAR CANCELACIÓN PRIMERO
+    if texto == "❌ Cancelar":
+        return await informe_inicio(update, context)
+    
     try:
-        anio = int(update.message.text.strip())
+        anio = int(texto)
         if not 1900 < anio < 2100:
-            await update.message.reply_text("Año inválido. Por favor, introduce un año válido (ej: 2023).")
+            await update.message.reply_text(
+                "Año inválido. Por favor, introduce un año válido (ej: 2023).",
+                reply_markup=create_cancel_keyboard()
+            )
             return INFORME_GENERAR
 
         mes = context.user_data.get('report_month')
@@ -792,7 +901,10 @@ async def generar_informe_mensual_custom(update: Update, context: ContextTypes.D
 
         return await generar_informe_mensual(update, context, mes, anio)
     except (ValueError, KeyError):
-        await update.message.reply_text("Año inválido. Por favor, introduce un número para el año (ej: 2023).")
+        await update.message.reply_text(
+            "Año inválido. Por favor, introduce un número para el año (ej: 2023).",
+            reply_markup=create_cancel_keyboard()
+        )
         return INFORME_GENERAR
 
 async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_TYPE, mes: int, anio: int) -> int:
