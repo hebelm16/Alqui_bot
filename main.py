@@ -11,20 +11,28 @@ if os.name == 'nt':
 from config import BOT_TOKEN, AUTHORIZED_USERS
 from database import inicializar_db, init_pool, close_pool
 from handlers import (
-    start, pago_inicio, pago_select_inquilino, pago_monto, gasto_inicio, gasto_monto,
-    gasto_desc, ver_resumen, informe_inicio, informe_mes_actual, informe_pedir_mes,
-    informe_pedir_anio, generar_informe_mensual_custom, deshacer_menu, deshacer_pago_handler,
-    deshacer_gasto_handler, volver_menu, error_handler, volver_menu_principal,
+    start, volver_menu, 
+    # Pago
+    pago_inicio, pago_select_inquilino, pago_nombre_otro, pago_monto,  # ✅ AGREGADO: pago_nombre_otro
+    # Gasto
+    gasto_inicio, gasto_monto, gasto_desc,
+    # Inquilinos
     gestionar_inquilinos_menu, add_inquilino_prompt, add_inquilino_save, list_inquilinos,
-    deactivate_inquilino_prompt, deactivate_inquilino_update, activate_inquilino_prompt,
+    deactivate_inquilino_prompt, deactivate_inquilino_update, activate_inquilino_prompt, 
     activate_inquilino_update, set_dia_pago_start, set_dia_pago_select_inquilino, set_dia_pago_save,
-    editar_inicio, editar_mes_actual, editar_pedir_mes,
-    editar_pedir_anio, editar_listar_transacciones_custom, editar_seleccionar_transaccion,
-    editar_ejecutar_borrado, enviar_recordatorios_pago,
-    MENU, PAGO_SELECT_INQUILINO, PAGO_MONTO, GASTO_MONTO, GASTO_DESC, INFORME_MES, 
-    INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR, INQUILINO_MENU, INQUILINO_ADD_NOMBRE,
-    INQUILINO_DEACTIVATE_SELECT, INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO,
-    EDITAR_PEDIR_MES, EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO,
+    # Editar/Borrar
+    editar_inicio, editar_mes_actual, editar_pedir_mes, editar_pedir_anio,
+    editar_listar_transacciones_custom, editar_seleccionar_transaccion, editar_ejecutar_borrado,
+    # Otros
+    ver_resumen, informe_inicio, informe_mes_actual, informe_pedir_mes, informe_pedir_anio,
+    generar_informe_mensual_custom, deshacer_menu, deshacer_pago_handler, deshacer_gasto_handler,
+    volver_menu_principal, error_handler, enviar_recordatorios_pago,
+    # Estados
+    MENU, PAGO_SELECT_INQUILINO, PAGO_MONTO, PAGO_NOMBRE_OTRO, GASTO_MONTO, GASTO_DESC,  # ✅ AGREGADO: PAGO_NOMBRE_OTRO
+    INFORME_MES, INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR,
+    INQUILINO_MENU, INQUILINO_ADD_NOMBRE, INQUILINO_DEACTIVATE_SELECT,
+    INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO, EDITAR_PEDIR_MES,
+    EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO,
     INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE
 )
 
@@ -55,71 +63,14 @@ def main() -> None:
     )
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[MessageHandler(filters.Regex("^📥 Registrar Pago$"), pago_inicio)],
         states={
-            MENU: [
-                MessageHandler(filters.Regex("^📥 Registrar Pago$"), pago_inicio),
-                MessageHandler(filters.Regex("^💸 Registrar Gasto$"), gasto_inicio),
-                MessageHandler(filters.Regex("^👤 Gestionar Inquilinos$"), gestionar_inquilinos_menu),
-                MessageHandler(filters.Regex("^✏️ Editar/Borrar$"), editar_inicio),
-                MessageHandler(filters.Regex("^📊 Ver Resumen$"), ver_resumen),
-                MessageHandler(filters.Regex("^📈 Generar Informe$"), informe_inicio),
-                MessageHandler(filters.Regex("^🗑️ Deshacer$"), deshacer_menu),
-            ],
-            # Flujo de pago
-            PAGO_SELECT_INQUILINO: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), pago_select_inquilino)],
-            PAGO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), pago_monto)],
-            
-            # Flujo de gasto
-            GASTO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), gasto_monto)],
-            GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), gasto_desc)],
-
-            # Flujo de informes
-            INFORME_MES: [
-                MessageHandler(filters.Regex("^Informe Mes Actual$"), informe_mes_actual),
-                MessageHandler(filters.Regex("^Elegir Mes y Año$"), informe_pedir_mes),
-            ],
-            INFORME_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), informe_pedir_anio)],
-            INFORME_GENERAR: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), generar_informe_mensual_custom)],
-
-            # Flujo de deshacer
-            DESHACER_MENU: [
-                MessageHandler(filters.Regex("^🗑️ Deshacer Último Pago$"), deshacer_pago_handler),
-                MessageHandler(filters.Regex("^🗑️ Deshacer Último Gasto$"), deshacer_gasto_handler),
-                MessageHandler(filters.Regex("^⬅️ Volver al Menú$"), volver_menu_principal),
-            ],
-
-            # Flujo de gestión de inquilinos
-            INQUILINO_MENU: [
-                MessageHandler(filters.Regex("^➕ Añadir Inquilino$"), add_inquilino_prompt),
-                MessageHandler(filters.Regex("^📋 Listar Inquilinos$"), list_inquilinos),
-                MessageHandler(filters.Regex("^🗓️ Asignar Día de Pago$"), set_dia_pago_start),
-                MessageHandler(filters.Regex("^❌ Desactivar Inquilino$"), deactivate_inquilino_prompt),
-                MessageHandler(filters.Regex("^✅ Activar Inquilino$"), activate_inquilino_prompt),
-                MessageHandler(filters.Regex("^⬅️ Volver al Menú Principal$"), start),
-            ],
-            INQUILINO_ADD_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), add_inquilino_save)],
-            INQUILINO_DEACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), deactivate_inquilino_update)],
-            INQUILINO_ACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), activate_inquilino_update)],
-            INQUILINO_SET_DIA_PAGO_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), set_dia_pago_select_inquilino)],
-            INQUILINO_SET_DIA_PAGO_SAVE: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), set_dia_pago_save)],
-
-            # Flujo de editar/borrar
-            EDITAR_INICIO: [
-                MessageHandler(filters.Regex("^Mes Actual$"), editar_mes_actual),
-                MessageHandler(filters.Regex("^Elegir Mes y Año$"), editar_pedir_mes),
-            ],
-            EDITAR_PEDIR_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), editar_pedir_anio)],
-            EDITAR_PEDIR_MES: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), editar_listar_transacciones_custom)],
-            EDITAR_SELECCIONAR_TRANSACCION: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Cancelar$"), editar_seleccionar_transaccion)],
-            EDITAR_CONFIRMAR_BORRADO: [MessageHandler(filters.Regex("^Sí, borrar$"), editar_ejecutar_borrado)],
+            # ✅ AGREGAR este nuevo estado
+            PAGO_NOMBRE_OTRO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_nombre_otro)],
+            PAGO_SELECT_INQUILINO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_select_inquilino)],
+            PAGO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_monto)],
         },
-        fallbacks=[
-            CommandHandler("start", start),
-            CommandHandler("cancel", volver_menu),
-            MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu),
-            MessageHandler(filters.Regex("^No, cancelar$"), volver_menu),
-        ]
+        fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
     )
 
     app.add_handler(conv_handler)

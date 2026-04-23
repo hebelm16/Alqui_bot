@@ -1,11 +1,14 @@
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile
-from telegram.ext import ContextTypes, ConversationHandler
-import calendar
-from datetime import date, datetime, timedelta
 import logging
 import psycopg2
 from psycopg2.errors import UniqueViolation
+import calendar
+import tempfile
+import os
+from io import BytesIO
 from decimal import Decimal, InvalidOperation
+from datetime import date, datetime, timedelta
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile
+from telegram.ext import ContextTypes, ConversationHandler
 from telegram.constants import ParseMode
 from telegram.helpers import escape_markdown
 from database import (
@@ -16,8 +19,6 @@ from database import (
 )
 from config import AUTHORIZED_USERS
 from pdf_generator import crear_informe_pdf
-import os
-import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +29,9 @@ logger = logging.getLogger(__name__)
     INQUILINO_MENU, INQUILINO_ADD_NOMBRE, INQUILINO_DEACTIVATE_SELECT,
     INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO, EDITAR_PEDIR_MES,
     EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO,
-    INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE
-) = range(20)
+    INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE,
+    PAGO_NOMBRE_OTRO
+) = range(21)
 
 # === Helpers ===
 def format_currency(value: float) -> str:
@@ -90,7 +92,7 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             mensaje = (
                 f"✅ Pago registrado correctamente:\n"
                 f"📅 Fecha de Pago: {md(fecha_registro.strftime('%d/%m/%Y'))}\n"
-                f"👤 Inquilino: {md(detalle)}\n"
+                f"👤 Nombre: {md(detalle)}\n"
                 f"💵 Monto: {md(format_currency(monto))}"
                 f"{mensaje_adicional}"
             )
@@ -153,24 +155,59 @@ async def volver_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 async def pago_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Inicia el flujo de registrar pago - Muestra lista de inquilinos."""
     inquilinos = await obtener_inquilinos(activos_only=True)
-    if not inquilinos:
-        await update.message.reply_text(
-            "No hay inquilinos activos. Por favor, añade un inquilino primero desde el menú 'Gestionar Inquilinos'.",
-            reply_markup=create_main_menu_keyboard()
-        )
-        return MENU
-
+    
     keyboard = [[KeyboardButton(inquilino[1])] for inquilino in inquilinos]
+    # ✅ AGREGADO: Opción "Otro" para ingresar nombre personalizado
+    keyboard.append([KeyboardButton("🔤 Otro (Nombre personalizado)")])
     keyboard.append([KeyboardButton("❌ Cancelar")])
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
-    await update.message.reply_text("Selecciona el inquilino que realizó el pago:", reply_markup=reply_markup)
+    if not inquilinos:
+        await update.message.reply_text(
+            "No hay inquilinos activos. Selecciona 'Otro' para ingresar un nombre personalizado o añade un inquilino desde el menú 'Gestionar Inquilinos'.",
+            reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_text("Selecciona el inquilino que realizó el pago:", reply_markup=reply_markup)
+    
     return PAGO_SELECT_INQUILINO
 
 async def pago_select_inquilino(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler de selección de inquilino para pago."""
-    context.user_data['detalle'] = update.message.text
-    await update.message.reply_text(f"Inquilino seleccionado: {update.message.text}. Ahora, escribe el monto del pago:", reply_markup=create_cancel_keyboard())
+    nombre = update.message.text.strip()
+    
+    # ✅ NUEVO: Detectar si seleccionó "Otro"
+    if nombre == "🔤 Otro (Nombre personalizado)":
+        await update.message.reply_text(
+            "Escribe el nombre de la persona que realizó el pago:",
+            reply_markup=create_cancel_keyboard()
+        )
+        return PAGO_NOMBRE_OTRO
+    
+    context.user_data['detalle'] = nombre
+    await update.message.reply_text(
+        f"Inquilino seleccionado: {nombre}. Ahora, escribe el monto del pago:",
+        reply_markup=create_cancel_keyboard()
+    )
+    return PAGO_MONTO
+
+async def pago_nombre_otro(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handler para ingresar nombre personalizado de pagador."""
+    nombre = update.message.text.strip()
+    
+    # ✅ VALIDACIÓN: Nombre no vacío
+    if not nombre or len(nombre) < 2:
+        await update.message.reply_text(
+            "❌ El nombre debe tener al menos 2 caracteres. Intenta de nuevo:",
+            reply_markup=create_cancel_keyboard()
+        )
+        return PAGO_NOMBRE_OTRO
+    
+    context.user_data['detalle'] = nombre
+    await update.message.reply_text(
+        f"Nombre registrado: {nombre}. Ahora, escribe el monto del pago:",
+        reply_markup=create_cancel_keyboard()
+    )
     return PAGO_MONTO
 
 async def pago_monto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
