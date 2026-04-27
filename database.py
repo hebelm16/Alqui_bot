@@ -3,12 +3,15 @@ import aiopg
 import logging
 from urllib.parse import urlparse
 from decimal import Decimal
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from config import COMMISSION_RATE, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 
 logger = logging.getLogger(__name__)
 
 pool = None
+
+# === Zona Horaria ===
+DO_TZ = timezone(timedelta(hours=-4)) # República Dominicana
 
 async def init_pool():
     """
@@ -313,7 +316,7 @@ async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
                 return None  # No se puede determinar sin día de pago
             dia_pago = result[0]
 
-            hoy = date.today()
+            hoy = datetime.now(DO_TZ).date()
 
             # 2. Buscar el último mes pagado por el inquilino
             await cur.execute(
@@ -365,7 +368,7 @@ async def obtener_inquilinos_para_recordatorio() -> dict:
     Devuelve un diccionario con dos claves: 'vencidos' y 'proximos'.
     """
     recordatorios = {"vencidos": [], "proximos": []}
-    hoy = date.today()
+    hoy = datetime.now(DO_TZ).date()
     mes_actual = hoy.month
     anio_actual = hoy.year
 

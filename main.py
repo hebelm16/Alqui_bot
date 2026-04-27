@@ -1,7 +1,7 @@
 import os
 import sys
 import logging
-from datetime import time
+from datetime import time, timezone, timedelta
 from telegram.request import HTTPXRequest
 
 import asyncio
@@ -165,11 +165,13 @@ async def main():
     application.add_error_handler(error_handler)
 
     # === TAREA AUTOMÁTICA: Recordatorios diarios ===
+    # Configurar zona horaria de República Dominicana (UTC-4)
+    do_tz = timezone(timedelta(hours=-4))
     if AUTHORIZED_USERS:
         for user_id in AUTHORIZED_USERS:
             application.job_queue.run_daily(
                 enviar_recordatorios_pago,
-                time=time(hour=8, minute=0),
+                time=time(hour=8, minute=0, tzinfo=do_tz),
                 chat_id=user_id
             )
 

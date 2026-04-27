@@ -5,7 +5,7 @@ import tempfile
 import os
 from io import BytesIO
 from decimal import Decimal, InvalidOperation
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.constants import ParseMode
@@ -33,6 +33,9 @@ MENU = ConversationHandler.END
     INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE,
     PAGO_NOMBRE_OTRO
 ) = range(20)
+
+# === Zona Horaria ===
+DO_TZ = timezone(timedelta(hours=-4)) # República Dominicana
 
 # === Helpers ===
 def format_currency(value: float) -> str:
@@ -81,7 +84,7 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             )
             return
 
-        fecha_registro = date.today()
+        fecha_registro = datetime.now(DO_TZ).date()
         mensaje_adicional = ""
 
         # ✅ VALIDACIÓN: Montos negativos o cero
@@ -640,7 +643,7 @@ async def editar_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 async def editar_mes_actual(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para editar mes actual."""
-    hoy = date.today()
+    hoy = datetime.now(DO_TZ).date()
     return await editar_listar_transacciones(update, context, hoy.month, hoy.year)
 
 async def editar_pedir_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -898,7 +901,7 @@ async def informe_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def informe_mes_actual(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para informe del mes actual."""
-    hoy = date.today()
+    hoy = datetime.now(DO_TZ).date()
     return await generar_informe_mensual(update, context, hoy.month, hoy.year)
 
 async def informe_pedir_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
