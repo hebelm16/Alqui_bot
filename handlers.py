@@ -763,7 +763,7 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         # ✅ CORREGIDO: Obtener chat_id del job context
         job = context.job
-        if not job or not hasattr(job, 'chat_id'):
+        if not job or getattr(job, 'chat_id', None) is None:
             logger.error("No se pudo obtener chat_id para enviar recordatorios.")
             return
         
