@@ -6,7 +6,7 @@ import os
 from io import BytesIO
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.constants import ParseMode
 from telegram.helpers import escape_markdown
@@ -214,11 +214,12 @@ async def pago_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     """Inicia el flujo de registrar pago - Muestra lista de inquilinos."""
     inquilinos = await obtener_inquilinos(activos_only=True)
     
-    keyboard = [[KeyboardButton(inquilino[1])] for inquilino in inquilinos]
-    # ✅ AGREGADO: Opción "Otro" para ingresar nombre personalizado
-    keyboard.append([KeyboardButton("🔤 Otro (Nombre personalizado)")])
-    keyboard.append([KeyboardButton("❌ Cancelar")])
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    keyboard = []
+    for inquilino in inquilinos:
+        keyboard.append([InlineKeyboardButton(inquilino[1], callback_data=f"pago_tenant_{inquilino[0]}")])
+    keyboard.append([InlineKeyboardButton("🔤 Otro (Nombre personalizado)", callback_data="pago_otro")])
+    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="pago_cancelar")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
     if not inquilinos:
         await update.message.reply_text(
@@ -231,27 +232,35 @@ async def pago_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     return PAGO_SELECT_INQUILINO
 
 async def pago_select_inquilino(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handler de selección de inquilino para pago."""
-    nombre = update.message.text.strip()
+    """Handler de selección de inquilino para pago (Inline)."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
     
-    # ✅ VALIDAR CANCELACIÓN PRIMERO
-    if nombre == "❌ Cancelar":
-        return await volver_menu(update, context)
+    if data == "pago_cancelar":
+        await query.edit_message_text("❌ Operación cancelada.")
+        await context.bot.send_message(chat_id=query.message.chat_id, text="Volviendo al menú principal.", reply_markup=create_main_menu_keyboard())
+        context.user_data.clear()
+        return MENU
     
-    # ✅ NUEVO: Detectar si seleccionó "Otro"
-    if nombre == "🔤 Otro (Nombre personalizado)":
-        await update.message.reply_text(
-            "Escribe el nombre de la persona que realizó el pago:",
-            reply_markup=create_cancel_keyboard()
-        )
+    if data == "pago_otro":
+        await query.edit_message_text("Has seleccionado: *Otro*", parse_mode=ParseMode.MARKDOWN_V2)
+        await context.bot.send_message(chat_id=query.message.chat_id, text="Escribe el nombre de la persona que realizó el pago:", reply_markup=create_cancel_keyboard())
         return PAGO_NOMBRE_OTRO
     
-    context.user_data['detalle'] = nombre
-    await update.message.reply_text(
-        f"Inquilino seleccionado: {nombre}. Ahora, escribe el monto del pago:",
-        reply_markup=create_cancel_keyboard()
-    )
-    return PAGO_MONTO
+    if data.startswith("pago_tenant_"):
+        inquilino_id = int(data.split("_")[2])
+        inquilino = await obtener_inquilino_por_id(inquilino_id)
+        if not inquilino:
+            await query.edit_message_text("❌ Error: No se encontró el inquilino.")
+            await context.bot.send_message(chat_id=query.message.chat_id, text="Volviendo al menú principal.", reply_markup=create_main_menu_keyboard())
+            return MENU
+        
+        nombre = inquilino[1]
+        context.user_data['detalle'] = nombre
+        await query.edit_message_text(f"✅ Inquilino seleccionado: *{md(nombre)}*", parse_mode=ParseMode.MARKDOWN_V2)
+        await context.bot.send_message(chat_id=query.message.chat_id, text="Ahora, escribe el monto del pago (ej: 3000):", reply_markup=create_cancel_keyboard())
+        return PAGO_MONTO
 
 async def pago_nombre_otro(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para ingresar nombre personalizado de pagador."""
@@ -456,26 +465,35 @@ async def deactivate_inquilino_prompt(update: Update, context: ContextTypes.DEFA
         await update.message.reply_text("No hay inquilinos activos para desactivar.", reply_markup=create_inquilinos_menu_keyboard())
         return INQUILINO_MENU
     
-    context.user_data['inquilinos_list'] = {i[1]: i[0] for i in inquilinos}
-    keyboard = [[KeyboardButton(i[1])] for i in inquilinos]
-    keyboard.append([KeyboardButton("❌ Cancelar")])
+    keyboard = []
+    for i in inquilinos:
+        keyboard.append([InlineKeyboardButton(i[1], callback_data=f"deact_{i[0]}")])
+    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancel_inquilino")])
     
-    await update.message.reply_text("Selecciona el inquilino que quieres desactivar:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    await update.message.reply_text("Selecciona el inquilino que quieres desactivar:", reply_markup=InlineKeyboardMarkup(keyboard))
     return INQUILINO_DEACTIVATE_SELECT
 
 async def deactivate_inquilino_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handler para confirmar desactivación de inquilino."""
-    nombre = update.message.text.strip()
-    inquilino_id = context.user_data.get('inquilinos_list', {}).get(nombre)
+    """Handler para confirmar desactivación de inquilino (Inline)."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
 
-    if not inquilino_id:
-        await update.message.reply_text("Selección inválida. Por favor, usa el teclado.", reply_markup=create_inquilinos_menu_keyboard())
+    if data == "cancel_inquilino":
+        await query.edit_message_text("❌ Operación cancelada.")
         return INQUILINO_MENU
 
-    await cambiar_estado_inquilino(inquilino_id, False)
-    await update.message.reply_text(f"✅ Inquilino '{nombre}' ha sido desactivado.", reply_markup=create_inquilinos_menu_keyboard())
-    context.user_data.clear()
-    return INQUILINO_MENU
+    if data.startswith("deact_"):
+        inquilino_id = int(data.split("_")[1])
+        inquilino = await obtener_inquilino_por_id(inquilino_id)
+        if not inquilino:
+            await query.edit_message_text("❌ Error al encontrar inquilino.")
+            return INQUILINO_MENU
+        
+        await cambiar_estado_inquilino(inquilino_id, False)
+        await query.edit_message_text(f"✅ Inquilino '{inquilino[1]}' ha sido desactivado.")
+        await context.bot.send_message(chat_id=query.message.chat_id, text="¿Qué más deseas hacer?", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
 
 async def activate_inquilino_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para iniciar activar inquilino."""
@@ -486,26 +504,35 @@ async def activate_inquilino_prompt(update: Update, context: ContextTypes.DEFAUL
         await update.message.reply_text("No hay inquilinos inactivos para activar.", reply_markup=create_inquilinos_menu_keyboard())
         return INQUILINO_MENU
 
-    context.user_data['inquilinos_list'] = {i[1]: i[0] for i in inquilinos_inactivos}
-    keyboard = [[KeyboardButton(i[1])] for i in inquilinos_inactivos]
-    keyboard.append([KeyboardButton("❌ Cancelar")])
+    keyboard = []
+    for i in inquilinos_inactivos:
+        keyboard.append([InlineKeyboardButton(i[1], callback_data=f"act_{i[0]}")])
+    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancel_inquilino")])
 
-    await update.message.reply_text("Selecciona el inquilino que quieres activar:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    await update.message.reply_text("Selecciona el inquilino que quieres activar:", reply_markup=InlineKeyboardMarkup(keyboard))
     return INQUILINO_ACTIVATE_SELECT
 
 async def activate_inquilino_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handler para confirmar activación de inquilino."""
-    nombre = update.message.text.strip()
-    inquilino_id = context.user_data.get('inquilinos_list', {}).get(nombre)
+    """Handler para confirmar activación de inquilino (Inline)."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
 
-    if not inquilino_id:
-        await update.message.reply_text("Selección inválida. Por favor, usa el teclado.", reply_markup=create_inquilinos_menu_keyboard())
+    if data == "cancel_inquilino":
+        await query.edit_message_text("❌ Operación cancelada.")
         return INQUILINO_MENU
 
-    await cambiar_estado_inquilino(inquilino_id, True)
-    await update.message.reply_text(f"✅ Inquilino '{nombre}' ha sido activado.", reply_markup=create_inquilinos_menu_keyboard())
-    context.user_data.clear()
-    return INQUILINO_MENU
+    if data.startswith("act_"):
+        inquilino_id = int(data.split("_")[1])
+        inquilino = await obtener_inquilino_por_id(inquilino_id)
+        if not inquilino:
+            await query.edit_message_text("❌ Error al encontrar inquilino.")
+            return INQUILINO_MENU
+        
+        await cambiar_estado_inquilino(inquilino_id, True)
+        await query.edit_message_text(f"✅ Inquilino '{inquilino[1]}' ha sido activado.")
+        await context.bot.send_message(chat_id=query.message.chat_id, text="¿Qué más deseas hacer?", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
 
 # === Flujo Asignar Día de Pago ===
 
@@ -519,35 +546,43 @@ async def set_dia_pago_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return INQUILINO_MENU
 
-    context.user_data['inquilinos_list'] = {i[1]: i[0] for i in inquilinos}
-    keyboard = [[KeyboardButton(i[1])] for i in inquilinos]
-    keyboard.append([KeyboardButton("❌ Cancelar")])
+    keyboard = []
+    for i in inquilinos:
+        keyboard.append([InlineKeyboardButton(i[1], callback_data=f"diapago_{i[0]}")])
+    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancel_inquilino")])
     
-    await update.message.reply_text(
-        "Selecciona el inquilino al que quieres asignar/editar el día de pago:",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    )
+    await update.message.reply_text("Selecciona el inquilino al que quieres asignar/editar el día de pago:", reply_markup=InlineKeyboardMarkup(keyboard))
     return INQUILINO_SET_DIA_PAGO_SELECT
 
 async def set_dia_pago_select_inquilino(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Maneja la selección del inquilino y pide el día de pago."""
-    nombre_inquilino = update.message.text
-    inquilino_id = context.user_data.get('inquilinos_list', {}).get(nombre_inquilino)
+    """Maneja la selección del inquilino (Inline) y pide el día de pago."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
 
-    if not inquilino_id:
-        await update.message.reply_text("Selección inválida. Por favor, usa el teclado.", reply_markup=create_inquilinos_menu_keyboard())
-        context.user_data.clear()
+    if data == "cancel_inquilino":
+        await query.edit_message_text("❌ Operación cancelada.")
         return INQUILINO_MENU
 
-    context.user_data['selected_inquilino_id'] = inquilino_id
-    context.user_data['selected_inquilino_nombre'] = nombre_inquilino
-    
-    await update.message.reply_text(
-        rf"Introduce el día de pago \(1\-31\) para {md(nombre_inquilino)}:",
-        parse_mode=ParseMode.MARKDOWN_V2,
-        reply_markup=create_cancel_keyboard()
-    )
-    return INQUILINO_SET_DIA_PAGO_SAVE
+    if data.startswith("diapago_"):
+        inquilino_id = int(data.split("_")[1])
+        inquilino = await obtener_inquilino_por_id(inquilino_id)
+        if not inquilino:
+            await query.edit_message_text("❌ Error al encontrar inquilino.")
+            return INQUILINO_MENU
+
+        nombre_inquilino = inquilino[1]
+        context.user_data['selected_inquilino_id'] = inquilino_id
+        context.user_data['selected_inquilino_nombre'] = nombre_inquilino
+        
+        await query.edit_message_text(f"✅ Inquilino seleccionado: {nombre_inquilino}")
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=rf"Introduce el día de pago \(1\-31\) para {md(nombre_inquilino)}:",
+            parse_mode=ParseMode.MARKDOWN_V2,
+            reply_markup=create_cancel_keyboard()
+        )
+        return INQUILINO_SET_DIA_PAGO_SAVE
 
 async def set_dia_pago_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Guarda el día de pago para el inquilino seleccionado."""
@@ -679,72 +714,71 @@ async def editar_listar_transacciones(update: Update, context: ContextTypes.DEFA
         return MENU
 
     mensaje = f"Transacciones para {mes}/{anio}:\n\n"
-    transactions_map = {}
+    keyboard = []
     
     if pagos:
         mensaje += "*Pagos*\n"
         for i, (p_id, p_fecha_str, p_inquilino, p_monto) in enumerate(pagos, 1):
-            code = f"P{i}"
-            transactions_map[code] = {"id": p_id, "tipo": "pago"}
             p_fecha = p_fecha_str if hasattr(p_fecha_str, 'strftime') else datetime.strptime(str(p_fecha_str), '%Y-%m-%d').date()
-            mensaje += rf"`{code}`: {md(p_inquilino)} \- {md(format_currency(p_monto))} el {p_fecha.strftime('%d/%m')}\n"
+            mensaje += rf"🔹 Pago {i}: {md(p_inquilino)} \- {md(format_currency(p_monto))} el {p_fecha.strftime('%d/%m')}\n"
+            keyboard.append([InlineKeyboardButton(f"🗑️ Borrar Pago {i}", callback_data=f"del_pago_{p_id}")])
     
     if gastos:
         mensaje += "\n*Gastos*\n"
         for i, (g_id, g_fecha_str, g_desc, g_monto) in enumerate(gastos, 1):
-            code = f"G{i}"
-            transactions_map[code] = {"id": g_id, "tipo": "gasto"}
             g_fecha = g_fecha_str if hasattr(g_fecha_str, 'strftime') else datetime.strptime(str(g_fecha_str), '%Y-%m-%d').date()
-            mensaje += rf"`{code}`: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
+            mensaje += rf"🔸 Gasto {i}: {md(g_desc)} \- {md(format_currency(g_monto))} el {g_fecha.strftime('%d/%m')}\n"
+            keyboard.append([InlineKeyboardButton(f"🗑️ Borrar Gasto {i}", callback_data=f"del_gasto_{g_id}")])
 
-    context.user_data['transactions_map'] = transactions_map
-    mensaje += r"\nEscribe el código de la transacción que quieres borrar \(ej: P1 o G2\)\n"
+    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="del_cancel")])
+    mensaje += r"\nSelecciona la transacción que quieres borrar:"
     
-    await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_cancel_keyboard())
+    await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=InlineKeyboardMarkup(keyboard))
     return EDITAR_SELECCIONAR_TRANSACCION
 
 async def editar_seleccionar_transaccion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handler para seleccionar transacción a borrar."""
-    texto = update.message.text.strip()
+    """Handler para seleccionar transacción a borrar (Inline)."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
     
-    # ✅ VALIDAR CANCELACIÓN PRIMERO
-    if texto == "❌ Cancelar":
+    if data == "del_cancel":
+        await query.edit_message_text("❌ Operación cancelada.")
         context.user_data.clear()
+        await context.bot.send_message(chat_id=query.message.chat_id, text="Volviendo al menú principal.", reply_markup=create_main_menu_keyboard())
         return MENU
     
-    code = texto.upper()
-    transactions_map = context.user_data.get('transactions_map', {})
+    parts = data.split("_")
+    tipo = parts[1] # "pago" o "gasto"
+    t_id = int(parts[2])
+    
+    context.user_data['selected_transaction'] = {'id': t_id, 'tipo': tipo}
 
-    if code not in transactions_map:
-        await update.message.reply_text(
-            "Código inválido. Por favor, introduce un código de la lista (ej: P1).",
-            reply_markup=create_cancel_keyboard()
-        )
-        return EDITAR_SELECCIONAR_TRANSACCION
-
-    transaction = transactions_map[code]
-    context.user_data['selected_transaction'] = transaction
-
-    keyboard = [[KeyboardButton("Sí, borrar")], [KeyboardButton("No, cancelar")]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text(
-        rf"¿Estás seguro de que quieres borrar la transacción `{md(code)}`\? Esta acción no se puede deshacer\.",
-        parse_mode=ParseMode.MARKDOWN_V2,
-        reply_markup=reply_markup
-    )
+    keyboard = [
+        [InlineKeyboardButton("✅ Sí, borrar", callback_data="del_confirm_yes")],
+        [InlineKeyboardButton("❌ No, cancelar", callback_data="del_confirm_no")]
+    ]
+    
+    await query.edit_message_text(f"¿Estás seguro de que quieres borrar este {tipo}?\nEsta acción no se puede deshacer.", reply_markup=InlineKeyboardMarkup(keyboard))
     return EDITAR_CONFIRMAR_BORRADO
 
 async def editar_ejecutar_borrado(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handler para confirmar y ejecutar borrado de transacción."""
-    if update.message.text != "Sí, borrar":
-        await update.message.reply_text("Borrado cancelado.", reply_markup=create_main_menu_keyboard())
+    """Handler para confirmar y ejecutar borrado de transacción (Inline)."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data == "del_confirm_no":
+        await query.edit_message_text("❌ Borrado cancelado.")
         context.user_data.clear()
+        await context.bot.send_message(chat_id=query.message.chat_id, text="Volviendo al menú principal.", reply_markup=create_main_menu_keyboard())
         return MENU
 
     transaction = context.user_data.get('selected_transaction')
     if not transaction:
-        await update.message.reply_text("Error, no se encontró la transacción seleccionada. Volviendo al menú.", reply_markup=create_main_menu_keyboard())
+        await query.edit_message_text("❌ Error, no se encontró la transacción seleccionada.")
         context.user_data.clear()
+        await context.bot.send_message(chat_id=query.message.chat_id, text="Volviendo al menú principal.", reply_markup=create_main_menu_keyboard())
         return MENU
 
     success = False
@@ -754,10 +788,11 @@ async def editar_ejecutar_borrado(update: Update, context: ContextTypes.DEFAULT_
         success = await delete_gasto_by_id(transaction['id'])
 
     if success:
-        await update.message.reply_text("✅ Transacción borrada correctamente.", reply_markup=create_main_menu_keyboard())
+        await query.edit_message_text("✅ Transacción borrada correctamente.")
     else:
-        await update.message.reply_text("❌ No se pudo borrar la transacción.", reply_markup=create_main_menu_keyboard())
+        await query.edit_message_text("❌ No se pudo borrar la transacción.")
     
+    await context.bot.send_message(chat_id=query.message.chat_id, text="Volviendo al menú principal.", reply_markup=create_main_menu_keyboard())
     context.user_data.clear()
     return MENU
 

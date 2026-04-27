@@ -9,7 +9,7 @@ import asyncio
 if os.name == 'nt':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler
 from config import BOT_TOKEN, AUTHORIZED_USERS
 from database import inicializar_db, init_pool, close_pool
 from handlers import (
@@ -77,7 +77,7 @@ async def main():
     application.add_handler(ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("^📥 Registrar Pago$") & auth_filter, pago_inicio)],
         states={
-            PAGO_SELECT_INQUILINO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_select_inquilino)],
+            PAGO_SELECT_INQUILINO: [CallbackQueryHandler(pago_select_inquilino, pattern="^pago_")],
             PAGO_NOMBRE_OTRO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_nombre_otro)],
             PAGO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_monto)],
         },
@@ -107,9 +107,9 @@ async def main():
                 MessageHandler(filters.Regex("^⬅️ Volver al Menú Principal$"), volver_menu_principal),
             ],
             INQUILINO_ADD_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_inquilino_save)],
-            INQUILINO_DEACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, deactivate_inquilino_update)],
-            INQUILINO_ACTIVATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, activate_inquilino_update)],
-            INQUILINO_SET_DIA_PAGO_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_dia_pago_select_inquilino)],
+            INQUILINO_DEACTIVATE_SELECT: [CallbackQueryHandler(deactivate_inquilino_update, pattern="^(deact_|cancel_inquilino)")],
+            INQUILINO_ACTIVATE_SELECT: [CallbackQueryHandler(activate_inquilino_update, pattern="^(act_|cancel_inquilino)")],
+            INQUILINO_SET_DIA_PAGO_SELECT: [CallbackQueryHandler(set_dia_pago_select_inquilino, pattern="^(diapago_|cancel_inquilino)")],
             INQUILINO_SET_DIA_PAGO_SAVE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_dia_pago_save)],
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
@@ -125,11 +125,8 @@ async def main():
             ],
             EDITAR_PEDIR_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_pedir_anio)],
             EDITAR_PEDIR_MES: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_listar_transacciones_custom)],
-            EDITAR_SELECCIONAR_TRANSACCION: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_seleccionar_transaccion)],
-            EDITAR_CONFIRMAR_BORRADO: [
-                MessageHandler(filters.Regex("^Sí, borrar$"), editar_ejecutar_borrado),
-                MessageHandler(filters.Regex("^No, cancelar$"), volver_menu),
-            ],
+            EDITAR_SELECCIONAR_TRANSACCION: [CallbackQueryHandler(editar_seleccionar_transaccion, pattern="^del_")],
+            EDITAR_CONFIRMAR_BORRADO: [CallbackQueryHandler(editar_ejecutar_borrado, pattern="^del_confirm_")],
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
     ))
