@@ -1,5 +1,5 @@
 import io
-import locale
+from datetime import datetime
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
@@ -32,14 +32,12 @@ def crear_informe_pdf(datos_informe: dict, mes: int, anio: int):
     styles = getSampleStyleSheet()
     elementos = []
 
-    # --- Configurar locale para nombre del mes en español ---
-    try:
-        locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
-    except locale.Error:
-        locale.setlocale(locale.LC_TIME, '') # Fallback al locale por defecto del sistema
-
-    from datetime import datetime
-    nombre_mes = datetime(anio, mes, 1).strftime('%B').capitalize()
+    # --- Nombre del mes en español (seguro para cualquier servidor) ---
+    meses = [
+        "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+    ]
+    nombre_mes = meses[mes]
 
     # --- Título ---
     titulo_str = f"Informe de Gestión Mensual - {nombre_mes} {anio}"

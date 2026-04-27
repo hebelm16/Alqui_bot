@@ -1,7 +1,6 @@
 import logging
 import psycopg2
 from psycopg2.errors import UniqueViolation
-import calendar
 import tempfile
 import os
 from io import BytesIO
@@ -101,7 +100,12 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                     fecha_pago_efectiva = await obtener_mes_pago_pendiente(detalle)
                     if fecha_pago_efectiva:
                         fecha_registro = fecha_pago_efectiva
-                        mensaje_adicional = rf"\n\n_Nota: El pago se ha registrado para el período pendiente de {md(fecha_registro.strftime('%B de %Y'))}\._"
+                        meses_nombres = [
+                            "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+                        ]
+                        nombre_mes_efectivo = meses_nombres[fecha_registro.month]
+                        mensaje_adicional = rf"\n\n_Nota: El pago se ha registrado para el período pendiente de {md(nombre_mes_efectivo)} de {fecha_registro.year}\._"
                 except Exception as e:
                     logger.warning(f"No se pudo obtener mes de pago pendiente para {detalle}: {e}")
                     # Continuar sin mensaje adicional
@@ -934,8 +938,12 @@ async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_
         # Generar el PDF en memoria
         pdf_buffer = crear_informe_pdf(report_data, mes, anio)
         
-        # Obtener el nombre del mes para el archivo
-        nombre_mes = calendar.month_name[mes].capitalize()
+        # --- Nombre del mes en español seguro para cualquier servidor ---
+        meses = [
+            "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        ]
+        nombre_mes = meses[mes]
         nombre_archivo = f"Informe_{nombre_mes}_{anio}.pdf"
         
         await update.message.reply_document(

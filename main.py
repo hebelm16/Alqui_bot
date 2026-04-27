@@ -67,12 +67,15 @@ async def main():
         .request(request)\
         .build()
 
+    # ✅ SEGURIDAD: Filtro global para restringir el uso solo a usuarios autorizados
+    auth_filter = filters.User(AUTHORIZED_USERS)
+
     # === HANDLER: /start ===
-    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("start", start, filters=auth_filter))
 
     # === HANDLER: Registrar Pago ===
     application.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^📥 Registrar Pago$"), pago_inicio)],
+        entry_points=[MessageHandler(filters.Regex("^📥 Registrar Pago$") & auth_filter, pago_inicio)],
         states={
             PAGO_SELECT_INQUILINO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_select_inquilino)],
             PAGO_NOMBRE_OTRO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_nombre_otro)],
@@ -83,7 +86,7 @@ async def main():
 
     # === HANDLER: Registrar Gasto ===
     application.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^💸 Registrar Gasto$"), gasto_inicio)],
+        entry_points=[MessageHandler(filters.Regex("^💸 Registrar Gasto$") & auth_filter, gasto_inicio)],
         states={
             GASTO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_monto)],
             GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_desc)],
@@ -93,7 +96,7 @@ async def main():
 
     # === HANDLER: Gestionar Inquilinos ===
     application.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^👤 Gestionar Inquilinos$"), gestionar_inquilinos_menu)],
+        entry_points=[MessageHandler(filters.Regex("^👤 Gestionar Inquilinos$") & auth_filter, gestionar_inquilinos_menu)],
         states={
             INQUILINO_MENU: [
                 MessageHandler(filters.Regex("^➕ Añadir Inquilino$"), add_inquilino_prompt),
@@ -114,7 +117,7 @@ async def main():
 
     # === HANDLER: Editar/Borrar ===
     application.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^✏️ Editar/Borrar$"), editar_inicio)],
+        entry_points=[MessageHandler(filters.Regex("^✏️ Editar/Borrar$") & auth_filter, editar_inicio)],
         states={
             EDITAR_INICIO: [
                 MessageHandler(filters.Regex("^Mes Actual$"), editar_mes_actual),
@@ -132,11 +135,11 @@ async def main():
     ))
 
     # === HANDLER: Ver Resumen ===
-    application.add_handler(MessageHandler(filters.Regex("^📊 Ver Resumen$"), ver_resumen))
+    application.add_handler(MessageHandler(filters.Regex("^📊 Ver Resumen$") & auth_filter, ver_resumen))
 
     # === HANDLER: Generar Informe ===
     application.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^📈 Generar Informe$"), informe_inicio)],
+        entry_points=[MessageHandler(filters.Regex("^📈 Generar Informe$") & auth_filter, informe_inicio)],
         states={
             INFORME_MES: [
                 MessageHandler(filters.Regex("^Informe Mes Actual$"), informe_mes_actual),
@@ -150,7 +153,7 @@ async def main():
 
     # === HANDLER: Deshacer ===
     application.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^🗑️ Deshacer$"), deshacer_menu)],
+        entry_points=[MessageHandler(filters.Regex("^🗑️ Deshacer$") & auth_filter, deshacer_menu)],
         states={
             DESHACER_MENU: [
                 MessageHandler(filters.Regex("^🗑️ Deshacer Último Pago$"), deshacer_pago_handler),
