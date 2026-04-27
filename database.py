@@ -298,6 +298,17 @@ async def actualizar_dia_pago_inquilino(inquilino_id: int, dia_pago: int) -> boo
                 return True
             return False
 
+async def eliminar_inquilino(inquilino_id: int) -> bool:
+    """Elimina un inquilino permanentemente de la base de datos."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("DELETE FROM inquilinos WHERE id = %s", (inquilino_id,))
+            if cur.rowcount > 0:
+                await cur.execute("COMMIT")
+                logger.info(f"Inquilino con ID {inquilino_id} eliminado permanentemente.")
+                return True
+            return False
+
 async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
     """
     Determina la fecha de pago para el próximo mes pendiente de un inquilino.

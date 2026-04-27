@@ -23,6 +23,7 @@ from handlers import (
     gestionar_inquilinos_menu, add_inquilino_prompt, add_inquilino_save, list_inquilinos,
     deactivate_inquilino_prompt, deactivate_inquilino_update, activate_inquilino_prompt, 
     activate_inquilino_update, set_dia_pago_start, set_dia_pago_select_inquilino, set_dia_pago_save,
+    delete_inquilino_prompt, delete_inquilino_update,
     # Editar/Borrar
     editar_inicio, editar_mes_actual, editar_pedir_mes, editar_pedir_anio,
     editar_listar_transacciones_custom, editar_seleccionar_transaccion, editar_ejecutar_borrado,
@@ -36,7 +37,7 @@ from handlers import (
     INQUILINO_MENU, INQUILINO_ADD_NOMBRE, INQUILINO_DEACTIVATE_SELECT,
     INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO, EDITAR_PEDIR_MES,
     EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO,
-    INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE
+    INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE, INQUILINO_DELETE_SELECT
 )
 
 # Configurar logging
@@ -104,6 +105,7 @@ async def main():
                 MessageHandler(filters.Regex("^❌ Desactivar Inquilino$"), deactivate_inquilino_prompt),
                 MessageHandler(filters.Regex("^✅ Activar Inquilino$"), activate_inquilino_prompt),
                 MessageHandler(filters.Regex("^🗓️ Asignar Día de Pago$"), set_dia_pago_start),
+                MessageHandler(filters.Regex("^🗑️ Eliminar Inquilino$"), delete_inquilino_prompt),
                 MessageHandler(filters.Regex("^⬅️ Volver al Menú Principal$"), volver_menu_principal),
             ],
             INQUILINO_ADD_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_inquilino_save)],
@@ -111,6 +113,7 @@ async def main():
             INQUILINO_ACTIVATE_SELECT: [CallbackQueryHandler(activate_inquilino_update, pattern="^(act_|cancel_inquilino)")],
             INQUILINO_SET_DIA_PAGO_SELECT: [CallbackQueryHandler(set_dia_pago_select_inquilino, pattern="^(diapago_|cancel_inquilino)")],
             INQUILINO_SET_DIA_PAGO_SAVE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_dia_pago_save)],
+            INQUILINO_DELETE_SELECT: [CallbackQueryHandler(delete_inquilino_update, pattern="^(delinq_|cancel_inquilino)")],
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
     ))

@@ -14,7 +14,8 @@ from database import (
     registrar_pago, registrar_gasto, obtener_resumen, obtener_informe_mensual,
     deshacer_ultimo_pago, deshacer_ultimo_gasto, crear_inquilino, obtener_inquilinos,
     cambiar_estado_inquilino, obtener_inquilino_por_id, delete_pago_by_id, delete_gasto_by_id,
-    obtener_inquilinos_para_recordatorio, actualizar_dia_pago_inquilino, obtener_mes_pago_pendiente
+    obtener_inquilinos_para_recordatorio, actualizar_dia_pago_inquilino, obtener_mes_pago_pendiente,
+    eliminar_inquilino
 )
 from config import AUTHORIZED_USERS
 from pdf_generator import crear_informe_pdf
@@ -31,8 +32,8 @@ MENU = ConversationHandler.END
     INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO, EDITAR_PEDIR_MES,
     EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO,
     INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE,
-    PAGO_NOMBRE_OTRO
-) = range(20)
+    PAGO_NOMBRE_OTRO, INQUILINO_DELETE_SELECT
+) = range(21)
 
 # === Zona Horaria ===
 DO_TZ = timezone(timedelta(hours=-4)) # República Dominicana
@@ -404,6 +405,7 @@ def create_inquilinos_menu_keyboard() -> ReplyKeyboardMarkup:
         [KeyboardButton("➕ Añadir Inquilino"), KeyboardButton("📋 Listar Inquilinos")],
         [KeyboardButton("🗓️ Asignar Día de Pago")],
         [KeyboardButton("❌ Desactivar Inquilino"), KeyboardButton("✅ Activar Inquilino")],
+        [KeyboardButton("🗑️ Eliminar Inquilino")],
         [KeyboardButton("⬅️ Volver al Menú Principal")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -450,13 +452,26 @@ async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """Handler para listar inquilinos."""
     inquilinos = await obtener_inquilinos(activos_only=False)
     if not inquilinos:
-        mensaje = "No hay inquilinos registrados."
-    else:
-        mensaje = "Lista de Inquilinos:\n"
-        for _, nombre, activo, dia_pago in inquilinos:
-            estado = "✅ Activo" if activo else "❌ Inactivo"
-            dia_pago_str = f"Día de pago: {dia_pago}" if dia_pago else "Día de pago: Sin asignar"
-            mensaje += rf"\- {md(nombre)} \({md(estado)}\) \- {md(dia_pago_str)}\n"
+        await update.message.reply_text("No hay inquilinos registrados.", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
+
+    activos = [i for i in inquilinos if i[2]]
+    inactivos = [i for i in inquilinos if not i[2]]
+
+    mensaje = "👥 *LISTA DE INQUILINOS* 👥\n\n"
+
+    if activos:
+        mensaje += "✅ *INQUILINOS ACTIVOS*\n"
+        for _, nombre, _, dia_pago in activos:
+            dia_str = f"Día {dia_pago} de cada mes" if dia_pago else "Sin asignar"
+            mensaje += rf"👤 *{md(nombre)}* \- 📅 {md(dia_str)}" + "\n"
+        mensaje += "\n"
+
+    if inactivos:
+        mensaje += "❌ *INQUILINOS INACTIVOS*\n"
+        for _, nombre, _, dia_pago in inactivos:
+            dia_str = f"Día {dia_pago} de cada mes" if dia_pago else "Sin asignar"
+            mensaje += rf"👤 ~{md(nombre)}~ \- 📅 {md(dia_str)}" + "\n"
     
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_inquilinos_menu_keyboard())
     return INQUILINO_MENU
@@ -534,6 +549,73 @@ async def activate_inquilino_update(update: Update, context: ContextTypes.DEFAUL
         
         await cambiar_estado_inquilino(inquilino_id, True)
         await query.edit_message_text(f"✅ Inquilino '{inquilino[1]}' ha sido activado.")
+        await context.bot.send_message(chat_id=query.message.chat_id, text="¿Qué más deseas hacer?", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
+
+# === Flujo Eliminar Inquilino ===
+async def delete_inquilino_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handler para iniciar eliminar inquilino permanentemente."""
+    inquilinos = await obtener_inquilinos(activos_only=False)
+    if not inquilinos:
+        await update.message.reply_text("No hay inquilinos registrados para eliminar.", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
+
+    keyboard = []
+    for i in inquilinos:
+        estado = " (Inactivo)" if not i[2] else ""
+        keyboard.append([InlineKeyboardButton(f"{i[1]}{estado}", callback_data=f"delinq_{i[0]}")])
+    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancel_inquilino")])
+
+    await update.message.reply_text(
+        "Selecciona el inquilino que quieres *eliminar permanentemente*:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode=ParseMode.MARKDOWN_V2
+    )
+    return INQUILINO_DELETE_SELECT
+
+async def delete_inquilino_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handler para confirmar y ejecutar eliminación de inquilino (Inline)."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data == "cancel_inquilino":
+        await query.edit_message_text("❌ Operación cancelada.")
+        return INQUILINO_MENU
+
+    if data.startswith("delinq_") and not data.startswith("delinq_yes_"):
+        inquilino_id = int(data.split("_")[1])
+        inquilino = await obtener_inquilino_por_id(inquilino_id)
+        if not inquilino:
+            await query.edit_message_text("❌ Error al encontrar inquilino.")
+            return INQUILINO_MENU
+
+        keyboard = [
+            [InlineKeyboardButton("✅ Sí, eliminar", callback_data=f"delinq_yes_{inquilino_id}")],
+            [InlineKeyboardButton("❌ No, cancelar", callback_data="cancel_inquilino")]
+        ]
+        await query.edit_message_text(
+            f"⚠️ ¿Estás seguro de que quieres eliminar a *{md(inquilino[1])}*?\n\n_Nota: Esto no borrará su historial de pagos, solo lo quitará de la lista\._",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.MARKDOWN_V2
+        )
+        return INQUILINO_DELETE_SELECT
+
+    if data.startswith("delinq_yes_"):
+        inquilino_id = int(data.split("_")[2])
+        inquilino = await obtener_inquilino_por_id(inquilino_id)
+        if not inquilino:
+            await query.edit_message_text("❌ Error al encontrar inquilino.")
+            return INQUILINO_MENU
+
+        nombre = inquilino[1]
+        exito = await eliminar_inquilino(inquilino_id)
+
+        if exito:
+            await query.edit_message_text(f"🗑️ Inquilino '{nombre}' ha sido eliminado permanentemente.")
+        else:
+            await query.edit_message_text("❌ Hubo un error al eliminar el inquilino.")
+
         await context.bot.send_message(chat_id=query.message.chat_id, text="¿Qué más deseas hacer?", reply_markup=create_inquilinos_menu_keyboard())
         return INQUILINO_MENU
 
