@@ -596,7 +596,7 @@ async def delete_inquilino_update(update: Update, context: ContextTypes.DEFAULT_
             [InlineKeyboardButton("❌ No, cancelar", callback_data="cancel_inquilino")]
         ]
         await query.edit_message_text(
-            f"⚠️ ¿Estás seguro de que quieres eliminar a *{md(inquilino[1])}*?\n\n_Nota: Esto no borrará su historial de pagos, solo lo quitará de la lista\._",
+            f"⚠️ ¿Estás seguro de que quieres eliminar a *{md(inquilino[1])}*?\n\n_Nota: Esto no borrará su historial de pagos, solo lo quitará de la lista\\._",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode=ParseMode.MARKDOWN_V2
         )
