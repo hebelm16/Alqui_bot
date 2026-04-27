@@ -19,6 +19,7 @@ from database import (
 )
 from config import AUTHORIZED_USERS
 from pdf_generator import crear_informe_pdf
+from chart_generator import generar_grafico_resumen
 
 logger = logging.getLogger(__name__)
 
@@ -939,6 +940,15 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     try:
         resumen_data = await obtener_resumen()
         mensaje = format_summary(resumen_data)
+        
+        # --- Generar y enviar gráfico visual ---
+        grafico_buffer = generar_grafico_resumen(
+            resumen_data['total_ingresos'],
+            resumen_data['total_gastos'],
+            resumen_data['total_comision'],
+            resumen_data['monto_neto']
+        )
+        await update.message.reply_photo(photo=InputFile(grafico_buffer, filename='grafico_resumen.png'))
         
         if len(mensaje) < 3000:
             await update.message.reply_text(
