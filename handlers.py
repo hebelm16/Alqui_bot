@@ -1012,7 +1012,7 @@ async def ver_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 async def informe_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para iniciar generación de informe."""
     keyboard = [
-        [KeyboardButton("Informe Mes Actual")],
+        [KeyboardButton("Informe Mes Actual"), KeyboardButton("Informe Mes Anterior")],
         [KeyboardButton("Elegir Mes y Año")],
         [KeyboardButton("❌ Cancelar")]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -1023,6 +1023,13 @@ async def informe_mes_actual(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Handler para informe del mes actual."""
     hoy = datetime.now(DO_TZ).date()
     return await generar_informe_mensual(update, context, hoy.month, hoy.year)
+
+async def informe_mes_anterior(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handler para informe del mes anterior."""
+    hoy = datetime.now(DO_TZ).date()
+    primer_dia_mes = hoy.replace(day=1)
+    mes_anterior = primer_dia_mes - timedelta(days=1)
+    return await generar_informe_mensual(update, context, mes_anterior.month, mes_anterior.year)
 
 async def informe_pedir_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para pedir mes personalizado de informe."""

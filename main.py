@@ -28,7 +28,7 @@ from handlers import (
     editar_inicio, editar_mes_actual, editar_pedir_mes, editar_pedir_anio,
     editar_listar_transacciones_custom, editar_seleccionar_transaccion, editar_ejecutar_borrado,
     # Otros
-    ver_resumen, informe_inicio, informe_mes_actual, informe_pedir_mes, informe_pedir_anio,
+    ver_resumen, informe_inicio, informe_mes_actual, informe_mes_anterior, informe_pedir_mes, informe_pedir_anio,
     generar_informe_mensual_custom, deshacer_menu, deshacer_pago_handler, deshacer_gasto_handler,
     volver_menu_principal, enviar_recordatorios_pago,
     # Estados
@@ -144,6 +144,7 @@ async def main():
         states={
             INFORME_MES: [
                 MessageHandler(filters.Regex("^Informe Mes Actual$"), informe_mes_actual),
+                MessageHandler(filters.Regex("^Informe Mes Anterior$"), informe_mes_anterior),
                 MessageHandler(filters.Regex("^Elegir Mes y Año$"), informe_pedir_mes),
             ],
             INFORME_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, informe_pedir_anio)],
