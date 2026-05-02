@@ -18,7 +18,7 @@ from handlers import (
     # Pago
     pago_inicio, pago_select_inquilino, pago_nombre_otro, pago_monto,
     # Gasto
-    gasto_inicio, gasto_monto, gasto_desc,
+    gasto_inicio, gasto_monto, gasto_desc, gasto_mes,
     # Inquilinos
     gestionar_inquilinos_menu, add_inquilino_prompt, add_inquilino_save, list_inquilinos,
     deactivate_inquilino_prompt, deactivate_inquilino_update, activate_inquilino_prompt, 
@@ -32,7 +32,7 @@ from handlers import (
     generar_informe_mensual_custom, deshacer_menu, deshacer_pago_handler, deshacer_gasto_handler,
     volver_menu_principal, enviar_recordatorios_pago,
     # Estados
-    MENU, PAGO_SELECT_INQUILINO, PAGO_MONTO, PAGO_NOMBRE_OTRO, GASTO_MONTO, GASTO_DESC,
+    MENU, PAGO_SELECT_INQUILINO, PAGO_MONTO, PAGO_NOMBRE_OTRO, GASTO_MONTO, GASTO_DESC, GASTO_MES,
     INFORME_MES, INFORME_ANIO, DESHACER_MENU, INFORME_GENERAR,
     INQUILINO_MENU, INQUILINO_ADD_NOMBRE, INQUILINO_DEACTIVATE_SELECT,
     INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO, EDITAR_PEDIR_MES,
@@ -91,6 +91,7 @@ async def main():
         states={
             GASTO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_monto)],
             GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_desc)],
+            GASTO_MES: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_mes)],
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
     ))

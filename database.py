@@ -380,47 +380,36 @@ async def obtener_inquilinos_para_recordatorio() -> dict:
     """
     recordatorios = {"vencidos": [], "proximos": []}
     hoy = datetime.now(DO_TZ).date()
-    mes_actual = hoy.month
-    anio_actual = hoy.year
 
+    inquilinos = []
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             # 1. Obtener todos los inquilinos activos con día de pago asignado
             await cur.execute(
-                "SELECT nombre, dia_pago FROM inquilinos WHERE activo = TRUE AND dia_pago IS NOT NULL"
+                "SELECT nombre FROM inquilinos WHERE activo = TRUE AND dia_pago IS NOT NULL"
             )
             inquilinos = await cur.fetchall()
 
-            if not inquilinos:
-                return recordatorios
+    if not inquilinos:
+        return recordatorios
 
-            # 2. Para cada inquilino, verificar si necesita notificación
-            for nombre_inquilino, dia_pago in inquilinos:
-                # Verificar si ya pagó este mes
-                await cur.execute("""
-                    SELECT 1 FROM pagos
-                    WHERE inquilino = %s
-                    AND EXTRACT(MONTH FROM fecha::date) = %s
-                    AND EXTRACT(YEAR FROM fecha::date) = %s
-                """, (nombre_inquilino, mes_actual, anio_actual))
-                
-                if await cur.fetchone():
-                    continue  # Ya pagó, no necesita recordatorio
+    # 2. Para cada inquilino, verificar si necesita notificación usando su fecha pendiente real
+    for (nombre_inquilino,) in inquilinos:
+        try:
+            # Usa la función inteligente que calcula la deuda real basándose en su último pago
+            fecha_pendiente = await obtener_mes_pago_pendiente(nombre_inquilino)
+            
+            if not fecha_pendiente:
+                continue
 
-                # 3. Si no ha pagado, verificar si el pago está vencido o próximo a vencer
-                try:
-                    fecha_pago_actual_mes = date(anio_actual, mes_actual, dia_pago)
-                    dias_para_pago = (fecha_pago_actual_mes - hoy).days
+            dias_para_pago = (fecha_pendiente - hoy).days
 
-                    if dias_para_pago < 0:
-                        recordatorios["vencidos"].append(nombre_inquilino)
-                    elif 0 <= dias_para_pago <= 2:
-                        recordatorios["proximos"].append(nombre_inquilino)
-                except ValueError:
-                    # Maneja casos como el día 31 en un mes de 30 días.
-                    # Si el día de pago no es válido para el mes actual, se podría ajustar la lógica.
-                    # Por ahora, simplemente se omite para evitar errores.
-                    logger.warning(f"Día de pago '{dia_pago}' inválido para el mes actual para el inquilino '{nombre_inquilino}'.")
-                    continue
+            if dias_para_pago < 0:
+                recordatorios["vencidos"].append(nombre_inquilino)
+            elif 0 <= dias_para_pago <= 2:
+                recordatorios["proximos"].append(nombre_inquilino)
+        except Exception as e:
+            logger.warning(f"Error al procesar recordatorios para {nombre_inquilino}: {e}")
+            continue
 
     return recordatorios

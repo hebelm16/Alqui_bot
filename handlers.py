@@ -33,8 +33,8 @@ MENU = ConversationHandler.END
     INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO, EDITAR_PEDIR_MES,
     EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO,
     INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE,
-    PAGO_NOMBRE_OTRO, INQUILINO_DELETE_SELECT
-) = range(21)
+    PAGO_NOMBRE_OTRO, INQUILINO_DELETE_SELECT, GASTO_MES
+) = range(22)
 
 # === Zona Horaria ===
 DO_TZ = timezone(timedelta(hours=-4)) # República Dominicana
@@ -86,7 +86,7 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             )
             return
 
-        fecha_registro = datetime.now(DO_TZ).date()
+        fecha_registro = context.user_data.get('fecha_custom', datetime.now(DO_TZ).date())
         mensaje_adicional = ""
 
         # ✅ VALIDACIÓN: Montos negativos o cero
@@ -192,6 +192,8 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             del context.user_data['monto']
         if 'detalle' in context.user_data:
             del context.user_data['detalle']
+        if 'fecha_custom' in context.user_data:
+            del context.user_data['fecha_custom']
         logger.debug(f"Datos de usuario limpios después de registrar {tipo}")
     
     # ✅ CORREGIDO: NO retornar nada - solo await
@@ -387,8 +389,13 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             return GASTO_DESC
         
         context.user_data['detalle'] = texto
-        await _save_transaction(update, context, 'gasto')
-        return MENU
+        
+        keyboard = [
+            [KeyboardButton("📅 Mes Actual"), KeyboardButton("📅 Mes Anterior")],
+            [KeyboardButton("❌ Cancelar")]
+        ]
+        await update.message.reply_text("¿A qué mes corresponde este gasto?", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+        return GASTO_MES
         
     except Exception as e:
         logger.error(f"Error inesperado en gasto_desc: {e}", exc_info=True)
@@ -398,6 +405,27 @@ async def gasto_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
         context.user_data.clear()
         return MENU
+
+async def gasto_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handler para seleccionar el mes del gasto."""
+    texto = update.message.text.strip()
+    
+    if texto == "❌ Cancelar":
+        return await volver_menu(update, context)
+        
+    hoy = datetime.now(DO_TZ).date()
+    if texto == "📅 Mes Anterior":
+        primer_dia_mes = hoy.replace(day=1)
+        mes_anterior = primer_dia_mes - timedelta(days=1)
+        context.user_data['fecha_custom'] = mes_anterior
+    elif texto == "📅 Mes Actual":
+        context.user_data['fecha_custom'] = hoy
+    else:
+        await update.message.reply_text("❌ Selección inválida. Por favor, usa los botones del teclado.")
+        return GASTO_MES
+        
+    await _save_transaction(update, context, 'gasto')
+    return MENU
 
 # === Flujo Gestionar Inquilinos ===
 def create_inquilinos_menu_keyboard() -> ReplyKeyboardMarkup:
