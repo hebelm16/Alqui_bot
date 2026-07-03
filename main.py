@@ -70,6 +70,8 @@ async def main():
 
     # ✅ SEGURIDAD: Filtro global para restringir el uso solo a usuarios autorizados
     auth_filter = filters.User(AUTHORIZED_USERS)
+    main_menu_regex = "^(📥 Registrar Pago|💸 Registrar Gasto|👤 Gestionar Inquilinos|✏️ Editar/Borrar|📊 Ver Resumen|📈 Generar Informe|🗑️ Deshacer|❌ Cancelar)$"
+    text_filter = filters.TEXT & ~filters.COMMAND & ~filters.Regex(main_menu_regex)
 
     # === HANDLER: /start ===
     application.add_handler(CommandHandler("start", start, filters=auth_filter))
@@ -79,21 +81,23 @@ async def main():
         entry_points=[MessageHandler(filters.Regex("^📥 Registrar Pago$") & auth_filter, pago_inicio)],
         states={
             PAGO_SELECT_INQUILINO: [CallbackQueryHandler(pago_select_inquilino, pattern="^pago_")],
-            PAGO_NOMBRE_OTRO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_nombre_otro)],
-            PAGO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, pago_monto)],
+            PAGO_NOMBRE_OTRO: [MessageHandler(text_filter, pago_nombre_otro)],
+            PAGO_MONTO: [MessageHandler(text_filter, pago_monto)],
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
+        allow_reentry=True,
     ))
 
     # === HANDLER: Registrar Gasto ===
     application.add_handler(ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("^💸 Registrar Gasto$") & auth_filter, gasto_inicio)],
         states={
-            GASTO_MONTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_monto)],
-            GASTO_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_desc)],
-            GASTO_MES: [MessageHandler(filters.TEXT & ~filters.COMMAND, gasto_mes)],
+            GASTO_MONTO: [MessageHandler(text_filter, gasto_monto)],
+            GASTO_DESC: [MessageHandler(text_filter, gasto_desc)],
+            GASTO_MES: [MessageHandler(text_filter, gasto_mes)],
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
+        allow_reentry=True,
     ))
 
     # === HANDLER: Gestionar Inquilinos ===
@@ -109,14 +113,15 @@ async def main():
                 MessageHandler(filters.Regex("^🗑️ Eliminar Inquilino$"), delete_inquilino_prompt),
                 MessageHandler(filters.Regex("^⬅️ Volver al Menú Principal$"), volver_menu_principal),
             ],
-            INQUILINO_ADD_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_inquilino_save)],
+            INQUILINO_ADD_NOMBRE: [MessageHandler(text_filter, add_inquilino_save)],
             INQUILINO_DEACTIVATE_SELECT: [CallbackQueryHandler(deactivate_inquilino_update, pattern="^(deact_|cancel_inquilino)")],
             INQUILINO_ACTIVATE_SELECT: [CallbackQueryHandler(activate_inquilino_update, pattern="^(act_|cancel_inquilino)")],
             INQUILINO_SET_DIA_PAGO_SELECT: [CallbackQueryHandler(set_dia_pago_select_inquilino, pattern="^(diapago_|cancel_inquilino)")],
-            INQUILINO_SET_DIA_PAGO_SAVE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_dia_pago_save)],
+            INQUILINO_SET_DIA_PAGO_SAVE: [MessageHandler(text_filter, set_dia_pago_save)],
             INQUILINO_DELETE_SELECT: [CallbackQueryHandler(delete_inquilino_update, pattern="^(delinq_|cancel_inquilino)")],
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
+        allow_reentry=True,
     ))
 
     # === HANDLER: Editar/Borrar ===
@@ -127,12 +132,13 @@ async def main():
                 MessageHandler(filters.Regex("^Mes Actual$"), editar_mes_actual),
                 MessageHandler(filters.Regex("^Elegir Mes y Año$"), editar_pedir_mes),
             ],
-            EDITAR_PEDIR_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_pedir_anio)],
-            EDITAR_PEDIR_MES: [MessageHandler(filters.TEXT & ~filters.COMMAND, editar_listar_transacciones_custom)],
+            EDITAR_PEDIR_ANIO: [MessageHandler(text_filter, editar_pedir_anio)],
+            EDITAR_PEDIR_MES: [MessageHandler(text_filter, editar_listar_transacciones_custom)],
             EDITAR_SELECCIONAR_TRANSACCION: [CallbackQueryHandler(editar_seleccionar_transaccion, pattern="^del_")],
             EDITAR_CONFIRMAR_BORRADO: [CallbackQueryHandler(editar_ejecutar_borrado, pattern="^del_confirm_")],
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
+        allow_reentry=True,
     ))
 
     # === HANDLER: Ver Resumen ===
@@ -147,10 +153,11 @@ async def main():
                 MessageHandler(filters.Regex("^Informe Mes Anterior$"), informe_mes_anterior),
                 MessageHandler(filters.Regex("^Elegir Mes y Año$"), informe_pedir_mes),
             ],
-            INFORME_ANIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, informe_pedir_anio)],
-            INFORME_GENERAR: [MessageHandler(filters.TEXT & ~filters.COMMAND, generar_informe_mensual_custom)],
+            INFORME_ANIO: [MessageHandler(text_filter, informe_pedir_anio)],
+            INFORME_GENERAR: [MessageHandler(text_filter, generar_informe_mensual_custom)],
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
+        allow_reentry=True,
     ))
 
     # === HANDLER: Deshacer ===
@@ -164,6 +171,7 @@ async def main():
             ],
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
+        allow_reentry=True,
     ))
 
     # === HANDLER DE ERROR ===

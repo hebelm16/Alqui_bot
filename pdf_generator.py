@@ -2,7 +2,7 @@ import io
 from datetime import datetime
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 from decimal import Decimal
@@ -51,8 +51,7 @@ def crear_informe_pdf(datos_informe: dict, mes: int, anio: int):
 
     # Usar Paragraph para interpretar las etiquetas <b>
     body_style = styles['BodyText']
-    right_align_style = styles['BodyText']
-    right_align_style.alignment = 2 # 0=left, 1=center, 2=right
+    right_align_style = ParagraphStyle('RightAlign', parent=styles['BodyText'], alignment=2) # 0=left, 1=center, 2=right
 
     resumen_data = [
         [Paragraph('<b>Ingresos Totales:</b>', body_style), Paragraph(format_currency_pdf(datos_informe.get('total_ingresos', 0)), right_align_style)],

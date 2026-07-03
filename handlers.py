@@ -763,7 +763,7 @@ async def editar_pedir_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "Por favor, introduce el número del mes (1-12):",
         reply_markup=create_cancel_keyboard()  # ✅ AGREGADO
     )
-    return INFORME_ANIO
+    return EDITAR_PEDIR_ANIO
 
 async def editar_pedir_anio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para validar mes de informe y pedir año."""
