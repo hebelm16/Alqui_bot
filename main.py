@@ -24,7 +24,7 @@ from handlers import (
     deactivate_inquilino_prompt, deactivate_inquilino_update, activate_inquilino_prompt, 
     activate_inquilino_update, set_dia_pago_start, set_dia_pago_select_inquilino, set_dia_pago_save,
     delete_inquilino_prompt, delete_inquilino_update,
-    estado_cuenta_prompt, estado_cuenta_show, inquilinos_pendientes_handler, descargar_recibo_callback, descargar_excel_callback,
+    estado_cuenta_prompt, estado_cuenta_show, inquilinos_pendientes_handler, inquilinos_pendientes_callback, descargar_recibo_callback, descargar_excel_callback,
     # Editar/Borrar
     editar_inicio, editar_mes_actual, editar_pedir_mes, editar_pedir_anio,
     editar_listar_transacciones_custom, editar_seleccionar_transaccion, editar_ejecutar_borrado,
@@ -131,9 +131,10 @@ async def main():
         per_message=False,
     ))
 
-    # === HANDLER: Descarga de recibo y excel (Callback global) ===
+    # === HANDLERS de Callbacks Globales (Recibos, Excel y Pendientes) ===
     application.add_handler(CallbackQueryHandler(descargar_recibo_callback, pattern="^dl_recibo_"))
     application.add_handler(CallbackQueryHandler(descargar_excel_callback, pattern="^dl_excel_"))
+    application.add_handler(CallbackQueryHandler(inquilinos_pendientes_callback, pattern="^pend_"))
 
     # === HANDLER: Editar/Borrar ===
     application.add_handler(ConversationHandler(

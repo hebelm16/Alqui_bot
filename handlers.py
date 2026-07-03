@@ -103,22 +103,24 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
         try:
             if tipo == 'pago':
-                # ✅ CORREGIDO: Manejo seguro de obtener_mes_pago_pendiente
+                mes_alquiler = None
+                anio_alquiler = None
                 try:
                     fecha_pago_efectiva = await obtener_mes_pago_pendiente(detalle)
                     if fecha_pago_efectiva:
-                        fecha_registro = fecha_pago_efectiva
+                        mes_alquiler = fecha_pago_efectiva.month
+                        anio_alquiler = fecha_pago_efectiva.year
                         meses_nombres = [
                             "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
                             "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
                         ]
-                        nombre_mes_efectivo = meses_nombres[fecha_registro.month]
-                        mensaje_adicional = rf"\n\n_Nota: El pago se ha registrado para el período pendiente de {md(nombre_mes_efectivo)} de {fecha_registro.year}\._"
+                        nombre_mes_efectivo = meses_nombres[mes_alquiler]
+                        if mes_alquiler != fecha_registro.month or anio_alquiler != fecha_registro.year:
+                            mensaje_adicional = rf"\n\n_Nota: Pago procesado en la fecha real {md(fecha_registro.strftime('%d/%m/%Y'))} cubriendo el período adeudado de *{md(nombre_mes_efectivo)} {anio_alquiler}*\._"
                 except Exception as e:
                     logger.warning(f"No se pudo obtener mes de pago pendiente para {detalle}: {e}")
-                    # Continuar sin mensaje adicional
                 
-                pago_id = await registrar_pago(fecha_registro, detalle, monto)
+                pago_id = await registrar_pago(fecha_registro, detalle, monto, mes_alquiler, anio_alquiler)
                 context.user_data['ultimo_recibo'] = {
                     'id': pago_id,
                     'fecha': fecha_registro.strftime('%Y-%m-%d'),
@@ -127,7 +129,7 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 }
                 mensaje = (
                     f"✅ Pago registrado correctamente:\n"
-                    f"📅 Fecha de Pago: {md(fecha_registro.strftime('%d/%m/%Y'))}\n"
+                    f"📅 Fecha de Pago Real: {md(fecha_registro.strftime('%d/%m/%Y'))}\n"
                     f"👤 Nombre: {md(detalle)}\n"
                     f"💵 Monto: {md(format_currency(monto))}"
                     f"{mensaje_adicional}"
@@ -626,24 +628,52 @@ async def estado_cuenta_show(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return INQUILINO_MENU
     return INQUILINO_MENU
 
-async def inquilinos_pendientes_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Muestra los inquilinos activos que no han pagado en el mes actual."""
-    ahora = datetime.now(DO_TZ)
-    pendientes = await obtener_inquilinos_pendientes_mes(ahora.month, ahora.year)
-    
+async def _generar_mensaje_pendientes(mes: int, anio: int) -> tuple[str, InlineKeyboardMarkup]:
+    pendientes = await obtener_inquilinos_pendientes_mes(mes, anio)
     meses_nombres = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-    nombre_mes = meses_nombres[ahora.month]
+    nombre_mes = meses_nombres[mes]
 
-    mensaje = f"⏳ *INQUILINOS PENDIENTES DE PAGO — {nombre_mes.upper()} {ahora.year}*\n\n"
+    mensaje = f"⏳ *INQUILINOS PENDIENTES DE PAGO — {nombre_mes.upper()} {anio}*\n\n"
     if not pendientes:
-        mensaje += rf"🎉 ¡Excelente\! Todos los inquilinos activos están al día en este mes\." + "\n"
+        mensaje += rf"🎉 ¡Excelente\! Todos los inquilinos activos registran pago en este período\." + "\n"
     else:
         for nombre, dia_pago in pendientes:
             dia_txt = rf"\(Día {dia_pago}\)" if dia_pago else rf"\(Sin día fijo\)"
             mensaje += rf"▪️ *{escape_markdown(nombre, 2)}* {dia_txt}" + "\n"
-            
-    await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_inquilinos_menu_keyboard())
+
+    ahora = datetime.now(DO_TZ).date()
+    primer_dia_mes_actual = ahora.replace(day=1)
+    mes_ant_date = primer_dia_mes_actual - timedelta(days=1)
+
+    buttons = [
+        [
+            InlineKeyboardButton(f"◀️ Mes Anterior ({meses_nombres[mes_ant_date.month]})", callback_data=f"pend_{mes_ant_date.month}_{mes_ant_date.year}"),
+            InlineKeyboardButton(f"📅 Mes Actual ({meses_nombres[ahora.month]})", callback_data=f"pend_{ahora.month}_{ahora.year}")
+        ]
+    ]
+    return mensaje, InlineKeyboardMarkup(buttons)
+
+async def inquilinos_pendientes_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Muestra los inquilinos activos que no han pagado en el mes actual u ofrece mes anterior."""
+    ahora = datetime.now(DO_TZ)
+    mensaje, markup = await _generar_mensaje_pendientes(ahora.month, ahora.year)
+    await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=markup)
     return INQUILINO_MENU
+
+async def inquilinos_pendientes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handler para cambiar entre mes actual y mes anterior en la lista de pendientes."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    try:
+        parts = data.split("_")
+        mes = int(parts[1])
+        anio = int(parts[2])
+        mensaje, markup = await _generar_mensaje_pendientes(mes, anio)
+        await query.edit_message_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=markup)
+    except Exception as e:
+        logger.error(f"Error en pendientes callback ({data}): {e}", exc_info=True)
 
 async def deactivate_inquilino_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler para iniciar desactivar inquilino."""

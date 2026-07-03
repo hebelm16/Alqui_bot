@@ -115,18 +115,40 @@ async def inicializar_db():
                 await cur.execute("ALTER TABLE gastos ALTER COLUMN monto TYPE NUMERIC(10, 2);")
                 logger.info("Migración de 'gastos' completada.")
 
+            # --- Migración para añadir mes_alquiler y anio_alquiler a pagos ---
+            await cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='pagos' AND column_name='mes_alquiler'")
+            if not await cur.fetchone():
+                logger.info("Añadiendo columnas 'mes_alquiler' y 'anio_alquiler' a 'pagos'...")
+                await cur.execute("ALTER TABLE pagos ADD COLUMN mes_alquiler INTEGER;")
+                await cur.execute("ALTER TABLE pagos ADD COLUMN anio_alquiler INTEGER;")
+                await cur.execute("UPDATE pagos SET mes_alquiler = EXTRACT(MONTH FROM fecha::date)::int, anio_alquiler = EXTRACT(YEAR FROM fecha::date)::int WHERE mes_alquiler IS NULL;")
+                await cur.execute("ALTER TABLE pagos DROP CONSTRAINT IF EXISTS pagos_inquilino_fecha_key;")
+                logger.info("Migración de período en pagos completada.")
+
             logger.info("Base de datos inicializada y/o migrada correctamente.")
 
 # --- Funciones para registrar ---
 
-async def registrar_pago(fecha: str, inquilino: str, monto: Decimal) -> int:
-    """Registra un nuevo pago en la base de datos."""
+async def registrar_pago(fecha: str, inquilino: str, monto: Decimal, mes_alquiler: int = None, anio_alquiler: int = None) -> int:
+    """Registra un nuevo pago en la base de datos con fecha real y período adeudado."""
+    if mes_alquiler is None or anio_alquiler is None:
+        try:
+            f_obj = datetime.strptime(str(fecha), '%Y-%m-%d').date()
+            mes_alquiler = f_obj.month
+            anio_alquiler = f_obj.year
+        except Exception:
+            mes_alquiler = datetime.now(DO_TZ).month
+            anio_alquiler = datetime.now(DO_TZ).year
+
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            await cur.execute("INSERT INTO pagos (fecha, inquilino, monto) VALUES (%s, %s, %s) RETURNING id", (fecha, inquilino, monto))
+            await cur.execute(
+                "INSERT INTO pagos (fecha, inquilino, monto, mes_alquiler, anio_alquiler) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (fecha, inquilino, monto, mes_alquiler, anio_alquiler)
+            )
             pago_id = await cur.fetchone()
             await cur.execute("COMMIT")
-            logger.info(f"Pago registrado con ID: {pago_id[0]}")
+            logger.info(f"Pago registrado con ID: {pago_id[0]} para período {mes_alquiler}/{anio_alquiler}")
             return pago_id[0]
 
 async def registrar_gasto(fecha: str, descripcion: str, monto: Decimal) -> int:
@@ -313,26 +335,24 @@ async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
     """
     Determina la fecha de pago para el próximo mes pendiente de un inquilino.
     Busca el último mes pagado y asigna el pago al mes siguiente.
-    Si no hay pagos, o si el último pago fue hace mucho, prioriza el mes actual si está pendiente.
     """
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            # 1. Obtener el día de pago del inquilino
             await cur.execute(
                 "SELECT dia_pago FROM inquilinos WHERE nombre = %s",
                 (inquilino_nombre,)
             )
             result = await cur.fetchone()
             if not result or not result[0]:
-                return None  # No se puede determinar sin día de pago
+                return None
             dia_pago = result[0]
 
             hoy = datetime.now(DO_TZ).date()
 
-            # 2. Buscar el último mes pagado por el inquilino
             await cur.execute(
-                "SELECT EXTRACT(YEAR FROM fecha::date)::int, EXTRACT(MONTH FROM fecha::date)::int "
-                "FROM pagos WHERE inquilino = %s ORDER BY fecha DESC LIMIT 1",
+                "SELECT COALESCE(anio_alquiler, EXTRACT(YEAR FROM fecha::date)::int), COALESCE(mes_alquiler, EXTRACT(MONTH FROM fecha::date)::int) "
+                "FROM pagos WHERE inquilino = %s "
+                "ORDER BY COALESCE(anio_alquiler, EXTRACT(YEAR FROM fecha::date)::int) DESC, COALESCE(mes_alquiler, EXTRACT(MONTH FROM fecha::date)::int) DESC LIMIT 1",
                 (inquilino_nombre,)
             )
             ultimo_pago = await cur.fetchone()
@@ -341,7 +361,6 @@ async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
 
             if ultimo_pago:
                 ultimo_anio, ultimo_mes = ultimo_pago
-                # Calcular el mes siguiente al último pago
                 if ultimo_mes == 12:
                     siguiente_mes = 1
                     siguiente_anio = ultimo_anio + 1
@@ -349,70 +368,57 @@ async def obtener_mes_pago_pendiente(inquilino_nombre: str) -> date | None:
                     siguiente_mes = ultimo_mes + 1
                     siguiente_anio = ultimo_anio
             
-            # Si el siguiente mes calculado es futuro, y el mes actual no está pagado,
-            # se debe priorizar el mes actual.
             fecha_siguiente_pago = date(siguiente_anio, siguiente_mes, 1)
             if fecha_siguiente_pago > hoy.replace(day=1):
                  await cur.execute(
                     "SELECT 1 FROM pagos WHERE inquilino = %s AND "
-                    "EXTRACT(YEAR FROM fecha::date) = %s AND EXTRACT(MONTH FROM fecha::date) = %s",
+                    "COALESCE(anio_alquiler, EXTRACT(YEAR FROM fecha::date)::int) = %s AND COALESCE(mes_alquiler, EXTRACT(MONTH FROM fecha::date)::int) = %s",
                     (inquilino_nombre, hoy.year, hoy.month)
                 )
                  if not await cur.fetchone():
-                     # El mes actual no está pagado, así que se le da prioridad.
                      siguiente_anio, siguiente_mes = hoy.year, hoy.month
 
-            # Construir la fecha de pago para el mes determinado
             try:
                 return date(siguiente_anio, siguiente_mes, dia_pago)
             except ValueError:
-                # Manejar días inválidos para el mes (ej. día 31 en febrero)
                 import calendar
                 _, ultimo_dia = calendar.monthrange(siguiente_anio, siguiente_mes)
                 return date(siguiente_anio, siguiente_mes, ultimo_dia)
 
 # --- Funciones para Borrar Específicos ---
 
-async def obtener_inquilinos_para_recordatorio() -> dict:
-    """
-    Obtiene una lista de nombres de inquilinos activos para recordatorio de pago.
-    Devuelve un diccionario con dos claves: 'vencidos' y 'proximos'.
-    """
-    recordatorios = {"vencidos": [], "proximos": []}
-    hoy = datetime.now(DO_TZ).date()
-
-    inquilinos = []
+async def borrar_transaccion(trans_id: int, tipo: str) -> bool:
+    """Elimina una transacción por su ID y tipo ('pago' o 'gasto')."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            # 1. Obtener todos los inquilinos activos con día de pago asignado
+            tabla = "pagos" if tipo == "pago" else "gastos"
+            await cur.execute(f"DELETE FROM {tabla} WHERE id = %s", (trans_id,))
+            if cur.rowcount > 0:
+                await cur.execute("COMMIT")
+                logger.info(f"Transacción {trans_id} ({tipo}) eliminada.")
+                return True
+            return False
+
+async def obtener_inquilinos_para_recordatorio(dia_objetivo: int) -> list:
+    """Devuelve inquilinos activos con día de pago igual a dia_objetivo que no han pagado el mes actual."""
+    hoy = datetime.now(DO_TZ)
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
             await cur.execute(
-                "SELECT nombre FROM inquilinos WHERE activo = TRUE AND dia_pago IS NOT NULL"
+                """
+                SELECT nombre FROM inquilinos
+                WHERE activo = TRUE AND dia_pago = %s
+                  AND NOT EXISTS (
+                      SELECT 1 FROM pagos
+                      WHERE inquilino = inquilinos.nombre
+                        AND COALESCE(mes_alquiler, EXTRACT(MONTH FROM fecha::date)::int) = %s
+                        AND COALESCE(anio_alquiler, EXTRACT(YEAR FROM fecha::date)::int) = %s
+                  )
+                """,
+                (dia_objetivo, hoy.month, hoy.year)
             )
-            inquilinos = await cur.fetchall()
-
-    if not inquilinos:
-        return recordatorios
-
-    # 2. Para cada inquilino, verificar si necesita notificación usando su fecha pendiente real
-    for (nombre_inquilino,) in inquilinos:
-        try:
-            # Usa la función inteligente que calcula la deuda real basándose en su último pago
-            fecha_pendiente = await obtener_mes_pago_pendiente(nombre_inquilino)
-            
-            if not fecha_pendiente:
-                continue
-
-            dias_para_pago = (fecha_pendiente - hoy).days
-
-            if dias_para_pago < 0:
-                recordatorios["vencidos"].append(nombre_inquilino)
-            elif 0 <= dias_para_pago <= 2:
-                recordatorios["proximos"].append(nombre_inquilino)
-        except Exception as e:
-            logger.warning(f"Error al procesar recordatorios para {nombre_inquilino}: {e}")
-            continue
-
-    return recordatorios
+            rows = await cur.fetchall()
+            return [r[0] for r in rows]
 
 async def obtener_estado_cuenta_inquilino(nombre: str, anio: int) -> dict:
     """Obtiene el historial de pagos y estado financiero de un inquilino en un año."""
@@ -425,12 +431,12 @@ async def obtener_estado_cuenta_inquilino(nombre: str, anio: int) -> dict:
             inquilino_info = {"id": row[0], "nombre": row[1], "activo": row[2], "dia_pago": row[3]}
 
             await cur.execute(
-                "SELECT id, fecha, monto FROM pagos WHERE inquilino = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY fecha ASC",
+                "SELECT id, fecha, monto FROM pagos WHERE inquilino = %s AND COALESCE(anio_alquiler, EXTRACT(YEAR FROM fecha::date)::int) = %s ORDER BY fecha ASC",
                 (nombre, anio)
             )
             pagos_anio = await cur.fetchall()
 
-            await cur.execute("SELECT SUM(monto) FROM pagos WHERE inquilino = %s AND EXTRACT(YEAR FROM fecha::date) = %s", (nombre, anio))
+            await cur.execute("SELECT SUM(monto) FROM pagos WHERE inquilino = %s AND COALESCE(anio_alquiler, EXTRACT(YEAR FROM fecha::date)::int) = %s", (nombre, anio))
             total_pagado_anio = (await cur.fetchone())[0] or Decimal('0.0')
 
     fecha_pendiente = await obtener_mes_pago_pendiente(nombre)
@@ -444,7 +450,7 @@ async def obtener_estado_cuenta_inquilino(nombre: str, anio: int) -> dict:
     }
 
 async def obtener_inquilinos_pendientes_mes(mes: int, anio: int) -> list:
-    """Devuelve inquilinos activos sin pago registrado en el mes/año indicado."""
+    """Devuelve inquilinos activos sin pago registrado para el mes/año adeudado indicado."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
@@ -455,8 +461,8 @@ async def obtener_inquilinos_pendientes_mes(mes: int, anio: int) -> list:
                   AND NOT EXISTS (
                       SELECT 1 FROM pagos p 
                       WHERE p.inquilino = i.nombre 
-                        AND EXTRACT(MONTH FROM p.fecha::date) = %s 
-                        AND EXTRACT(YEAR FROM p.fecha::date) = %s
+                        AND COALESCE(p.mes_alquiler, EXTRACT(MONTH FROM p.fecha::date)::int) = %s 
+                        AND COALESCE(p.anio_alquiler, EXTRACT(YEAR FROM p.fecha::date)::int) = %s
                   )
                 ORDER BY i.dia_pago ASC NULLS LAST, i.nombre ASC
                 """,
