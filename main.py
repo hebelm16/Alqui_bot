@@ -24,6 +24,7 @@ from handlers import (
     deactivate_inquilino_prompt, deactivate_inquilino_update, activate_inquilino_prompt, 
     activate_inquilino_update, set_dia_pago_start, set_dia_pago_select_inquilino, set_dia_pago_save,
     delete_inquilino_prompt, delete_inquilino_update,
+    estado_cuenta_prompt, estado_cuenta_show, inquilinos_pendientes_handler, descargar_recibo_callback, descargar_excel_callback,
     # Editar/Borrar
     editar_inicio, editar_mes_actual, editar_pedir_mes, editar_pedir_anio,
     editar_listar_transacciones_custom, editar_seleccionar_transaccion, editar_ejecutar_borrado,
@@ -37,7 +38,8 @@ from handlers import (
     INQUILINO_MENU, INQUILINO_ADD_NOMBRE, INQUILINO_DEACTIVATE_SELECT,
     INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO, EDITAR_PEDIR_MES,
     EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO,
-    INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE, INQUILINO_DELETE_SELECT
+    INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE, INQUILINO_DELETE_SELECT,
+    INQUILINO_ESTADO_CUENTA_SELECT
 )
 
 # Configurar logging
@@ -107,6 +109,8 @@ async def main():
             INQUILINO_MENU: [
                 MessageHandler(filters.Regex("^➕ Añadir Inquilino$"), add_inquilino_prompt),
                 MessageHandler(filters.Regex("^📋 Listar Inquilinos$"), list_inquilinos),
+                MessageHandler(filters.Regex("^📑 Estado de Cuenta$"), estado_cuenta_prompt),
+                MessageHandler(filters.Regex("^⏳ Pendientes del Mes$"), inquilinos_pendientes_handler),
                 MessageHandler(filters.Regex("^❌ Desactivar Inquilino$"), deactivate_inquilino_prompt),
                 MessageHandler(filters.Regex("^✅ Activar Inquilino$"), activate_inquilino_prompt),
                 MessageHandler(filters.Regex("^🗓️ Asignar Día de Pago$"), set_dia_pago_start),
@@ -119,10 +123,15 @@ async def main():
             INQUILINO_SET_DIA_PAGO_SELECT: [CallbackQueryHandler(set_dia_pago_select_inquilino, pattern="^(diapago_|cancel_inquilino)")],
             INQUILINO_SET_DIA_PAGO_SAVE: [MessageHandler(text_filter, set_dia_pago_save)],
             INQUILINO_DELETE_SELECT: [CallbackQueryHandler(delete_inquilino_update, pattern="^(delinq_|cancel_inquilino)")],
+            INQUILINO_ESTADO_CUENTA_SELECT: [CallbackQueryHandler(estado_cuenta_show, pattern="^(ec_|cancel_inquilino)")],
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
         allow_reentry=True,
     ))
+
+    # === HANDLER: Descarga de recibo y excel (Callback global) ===
+    application.add_handler(CallbackQueryHandler(descargar_recibo_callback, pattern="^dl_recibo_"))
+    application.add_handler(CallbackQueryHandler(descargar_excel_callback, pattern="^dl_excel_"))
 
     # === HANDLER: Editar/Borrar ===
     application.add_handler(ConversationHandler(

@@ -413,3 +413,53 @@ async def obtener_inquilinos_para_recordatorio() -> dict:
             continue
 
     return recordatorios
+
+async def obtener_estado_cuenta_inquilino(nombre: str, anio: int) -> dict:
+    """Obtiene el historial de pagos y estado financiero de un inquilino en un año."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT id, nombre, activo, dia_pago FROM inquilinos WHERE nombre = %s", (nombre,))
+            row = await cur.fetchone()
+            if not row:
+                return {}
+            inquilino_info = {"id": row[0], "nombre": row[1], "activo": row[2], "dia_pago": row[3]}
+
+            await cur.execute(
+                "SELECT id, fecha, monto FROM pagos WHERE inquilino = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY fecha ASC",
+                (nombre, anio)
+            )
+            pagos_anio = await cur.fetchall()
+
+            await cur.execute("SELECT SUM(monto) FROM pagos WHERE inquilino = %s AND EXTRACT(YEAR FROM fecha::date) = %s", (nombre, anio))
+            total_pagado_anio = (await cur.fetchone())[0] or Decimal('0.0')
+
+    fecha_pendiente = await obtener_mes_pago_pendiente(nombre)
+
+    return {
+        "inquilino": inquilino_info,
+        "anio": anio,
+        "pagos": pagos_anio,
+        "total_pagado": total_pagado_anio,
+        "fecha_pendiente": fecha_pendiente
+    }
+
+async def obtener_inquilinos_pendientes_mes(mes: int, anio: int) -> list:
+    """Devuelve inquilinos activos sin pago registrado en el mes/año indicado."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT i.nombre, i.dia_pago 
+                FROM inquilinos i 
+                WHERE i.activo = TRUE 
+                  AND NOT EXISTS (
+                      SELECT 1 FROM pagos p 
+                      WHERE p.inquilino = i.nombre 
+                        AND EXTRACT(MONTH FROM p.fecha::date) = %s 
+                        AND EXTRACT(YEAR FROM p.fecha::date) = %s
+                  )
+                ORDER BY i.dia_pago ASC NULLS LAST, i.nombre ASC
+                """,
+                (mes, anio)
+            )
+            return await cur.fetchall()

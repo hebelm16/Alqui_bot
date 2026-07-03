@@ -15,11 +15,13 @@ from database import (
     deshacer_ultimo_pago, deshacer_ultimo_gasto, crear_inquilino, obtener_inquilinos,
     cambiar_estado_inquilino, obtener_inquilino_por_id, delete_pago_by_id, delete_gasto_by_id,
     obtener_inquilinos_para_recordatorio, actualizar_dia_pago_inquilino, obtener_mes_pago_pendiente,
-    eliminar_inquilino
+    eliminar_inquilino, obtener_estado_cuenta_inquilino, obtener_inquilinos_pendientes_mes
 )
 from config import AUTHORIZED_USERS
 from pdf_generator import crear_informe_pdf
 from chart_generator import generar_grafico_resumen
+from receipt_generator import crear_recibo_pdf, crear_recibo_png
+from export_generator import exportar_informe_excel
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +35,9 @@ MENU = ConversationHandler.END
     INQUILINO_ACTIVATE_SELECT, EDITAR_INICIO, EDITAR_PEDIR_ANIO, EDITAR_PEDIR_MES,
     EDITAR_SELECCIONAR_TRANSACCION, EDITAR_CONFIRMAR_BORRADO,
     INQUILINO_SET_DIA_PAGO_SELECT, INQUILINO_SET_DIA_PAGO_SAVE,
-    PAGO_NOMBRE_OTRO, INQUILINO_DELETE_SELECT, GASTO_MES
-) = range(22)
+    PAGO_NOMBRE_OTRO, INQUILINO_DELETE_SELECT, GASTO_MES,
+    INQUILINO_ESTADO_CUENTA_SELECT
+) = range(23)
 
 # === Zona Horaria ===
 DO_TZ = timezone(timedelta(hours=-4)) # República Dominicana
@@ -115,7 +118,13 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                     logger.warning(f"No se pudo obtener mes de pago pendiente para {detalle}: {e}")
                     # Continuar sin mensaje adicional
                 
-                await registrar_pago(fecha_registro, detalle, monto)
+                pago_id = await registrar_pago(fecha_registro, detalle, monto)
+                context.user_data['ultimo_recibo'] = {
+                    'id': pago_id,
+                    'fecha': fecha_registro.strftime('%Y-%m-%d'),
+                    'inquilino': detalle,
+                    'monto': str(monto)
+                }
                 mensaje = (
                     f"✅ Pago registrado correctamente:\n"
                     f"📅 Fecha de Pago: {md(fecha_registro.strftime('%d/%m/%Y'))}\n"
@@ -140,12 +149,23 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 context.user_data.clear()
                 return
 
-            # ✅ CORREGIDO: Asegurar que el mensaje se envía correctamente
             await update.message.reply_text(
                 mensaje, 
                 parse_mode=ParseMode.MARKDOWN_V2, 
                 reply_markup=create_main_menu_keyboard()
             )
+            if tipo == 'pago':
+                recibo_buttons = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("📄 Descargar PDF", callback_data="dl_recibo_pdf"),
+                        InlineKeyboardButton("🖼️ Descargar Imagen (PNG)", callback_data="dl_recibo_png")
+                    ]
+                ])
+                await update.message.reply_text(
+                    "📄 *Comprobante de Pago*\n¿En qué formato deseas generar el recibo?",
+                    parse_mode=ParseMode.MARKDOWN_V2,
+                    reply_markup=recibo_buttons
+                )
             logger.info(f"{tipo.capitalize()} registrado exitosamente para {detalle}")
 
         except UniqueViolation as e:
@@ -427,11 +447,49 @@ async def gasto_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await _save_transaction(update, context, 'gasto')
     return MENU
 
+async def descargar_recibo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handler para botones inline de descarga de comprobante PDF / PNG."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    recibo_data = context.user_data.get('ultimo_recibo')
+    if not recibo_data:
+        await query.edit_message_text("❌ Los datos del recibo han expirado o ya no están disponibles.")
+        return
+
+    pago_id = recibo_data['id']
+    fecha_str = recibo_data['fecha']
+    inquilino = recibo_data['inquilino']
+    monto = Decimal(recibo_data['monto'])
+
+    try:
+        if data == "dl_recibo_pdf":
+            pdf_buffer = crear_recibo_pdf(pago_id, fecha_str, inquilino, monto)
+            await context.bot.send_document(
+                chat_id=query.message.chat_id,
+                document=InputFile(pdf_buffer, filename=f"Recibo_{inquilino.replace(' ', '_')}_{fecha_str}.pdf"),
+                caption=f"📄 *Comprobante PDF #{pago_id:04d}*\nInquilino: {escape_markdown(inquilino, 2)}\nMonto: {escape_markdown(format_currency(monto), 2)}",
+                parse_mode=ParseMode.MARKDOWN_V2
+            )
+        elif data == "dl_recibo_png":
+            png_buffer = crear_recibo_png(pago_id, fecha_str, inquilino, monto)
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=InputFile(png_buffer, filename=f"Recibo_{inquilino.replace(' ', '_')}_{fecha_str}.png"),
+                caption=f"🖼️ *Comprobante Imagen #{pago_id:04d}*\nInquilino: {escape_markdown(inquilino, 2)}\nMonto: {escape_markdown(format_currency(monto), 2)}",
+                parse_mode=ParseMode.MARKDOWN_V2
+            )
+    except Exception as e:
+        logger.error(f"Error generando recibo ({data}): {e}", exc_info=True)
+        await context.bot.send_message(chat_id=query.message.chat_id, text="❌ Ocurrió un error al generar el archivo del comprobante.")
+
 # === Flujo Gestionar Inquilinos ===
 def create_inquilinos_menu_keyboard() -> ReplyKeyboardMarkup:
     """Crea el teclado del menú de inquilinos."""
     keyboard = [
         [KeyboardButton("➕ Añadir Inquilino"), KeyboardButton("📋 Listar Inquilinos")],
+        [KeyboardButton("📑 Estado de Cuenta"), KeyboardButton("⏳ Pendientes del Mes")],
         [KeyboardButton("🗓️ Asignar Día de Pago")],
         [KeyboardButton("❌ Desactivar Inquilino"), KeyboardButton("✅ Activar Inquilino")],
         [KeyboardButton("🗑️ Eliminar Inquilino")],
@@ -502,6 +560,88 @@ async def list_inquilinos(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             dia_str = f"Día {dia_pago} de cada mes" if dia_pago else "Sin asignar"
             mensaje += rf"👤 ~{md(nombre)}~ \- 📅 {md(dia_str)}" + "\n"
     
+    await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_inquilinos_menu_keyboard())
+    return INQUILINO_MENU
+
+async def estado_cuenta_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handler para seleccionar inquilino para ver su estado de cuenta."""
+    inquilinos = await obtener_inquilinos(activos_only=False)
+    if not inquilinos:
+        await update.message.reply_text("No hay inquilinos registrados.", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
+    
+    keyboard = []
+    for i in inquilinos:
+        estado = "✅" if i[2] else "❌"
+        keyboard.append([InlineKeyboardButton(f"{estado} {i[1]}", callback_data=f"ec_{i[1]}")])
+    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancel_inquilino")])
+    
+    await update.message.reply_text("Selecciona el inquilino para ver su Estado de Cuenta:", reply_markup=InlineKeyboardMarkup(keyboard))
+    return INQUILINO_ESTADO_CUENTA_SELECT
+
+async def estado_cuenta_show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Muestra el estado de cuenta del inquilino seleccionado."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data == "cancel_inquilino":
+        await query.edit_message_text("❌ Operación cancelada.")
+        return INQUILINO_MENU
+
+    if data.startswith("ec_"):
+        nombre = data.split("_", 1)[1]
+        anio = datetime.now(DO_TZ).year
+        ec = await obtener_estado_cuenta_inquilino(nombre, anio)
+        if not ec or not ec.get("inquilino"):
+            await query.edit_message_text("❌ No se encontró información para el inquilino.")
+            return INQUILINO_MENU
+        
+        inq = ec["inquilino"]
+        pagos = ec.get("pagos", [])
+        total_pagado = ec.get("total_pagado", Decimal('0.0'))
+        dia_pago = inq.get("dia_pago")
+        fecha_pend = ec.get("fecha_pendiente")
+
+        mensaje = f"📑 *ESTADO DE CUENTA: {escape_markdown(inq['nombre'], 2)}*\n"
+        mensaje += f"📅 *Año:* {anio}\n"
+        mensaje += f"📌 *Estado:* {'✅ Activo' if inq['activo'] else '❌ Inactivo'}\n"
+        if dia_pago:
+            mensaje += f"🗓️ *Día de pago:* {dia_pago} de cada mes\n"
+        if fecha_pend:
+            meses_nombres = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+            nombre_mes = meses_nombres[fecha_pend.month]
+            mensaje += f"⏳ *Próximo período pendiente:* {nombre_mes} {fecha_pend.year}\n"
+        mensaje += f"\n💰 *Total Pagado en {anio}:* {escape_markdown(format_currency(total_pagado), 2)}\n\n"
+        mensaje += "*Historial de Pagos del Año:*\n"
+        if not pagos:
+            mensaje += rf"_No hay pagos registrados este año\._" + "\n"
+        else:
+            for p in pagos[-10:]: # últimos 10
+                f_str = p[1].strftime('%d/%m/%Y') if hasattr(p[1], 'strftime') else str(p[1])
+                mensaje += rf"▪️ {f_str} \— {escape_markdown(format_currency(p[2]), 2)}" + "\n"
+
+        await query.edit_message_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2)
+        await context.bot.send_message(chat_id=query.message.chat_id, text="¿Qué más deseas hacer en Gestión de Inquilinos?", reply_markup=create_inquilinos_menu_keyboard())
+        return INQUILINO_MENU
+    return INQUILINO_MENU
+
+async def inquilinos_pendientes_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Muestra los inquilinos activos que no han pagado en el mes actual."""
+    ahora = datetime.now(DO_TZ)
+    pendientes = await obtener_inquilinos_pendientes_mes(ahora.month, ahora.year)
+    
+    meses_nombres = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    nombre_mes = meses_nombres[ahora.month]
+
+    mensaje = f"⏳ *INQUILINOS PENDIENTES DE PAGO — {nombre_mes.upper()} {ahora.year}*\n\n"
+    if not pendientes:
+        mensaje += rf"🎉 ¡Excelente\! Todos los inquilinos activos están al día en este mes\." + "\n"
+    else:
+        for nombre, dia_pago in pendientes:
+            dia_txt = rf"\(Día {dia_pago}\)" if dia_pago else rf"\(Sin día fijo\)"
+            mensaje += rf"▪️ *{escape_markdown(nombre, 2)}* {dia_txt}" + "\n"
+            
     await update.message.reply_text(mensaje, parse_mode=ParseMode.MARKDOWN_V2, reply_markup=create_inquilinos_menu_keyboard())
     return INQUILINO_MENU
 
@@ -1100,10 +1240,8 @@ async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_
     try:
         report_data = await obtener_informe_mensual(mes, anio)
         
-        # Generar el PDF en memoria
         pdf_buffer = crear_informe_pdf(report_data, mes, anio)
         
-        # --- Nombre del mes en español seguro para cualquier servidor ---
         meses = [
             "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
             "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
@@ -1113,8 +1251,16 @@ async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_
         
         await update.message.reply_document(
             document=InputFile(pdf_buffer, filename=nombre_archivo),
-            caption=f"📄 Aquí tienes el informe de pagos para {nombre_mes} de {anio}.",
+            caption=f"📄 Aquí tienes el informe PDF para {nombre_mes} de {anio}.",
             reply_markup=create_main_menu_keyboard()
+        )
+
+        excel_btn = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📊 Descargar en Excel (.xlsx)", callback_data=f"dl_excel_{mes}_{anio}")]
+        ])
+        await update.message.reply_text(
+            "💡 ¿Deseas descargar el reporte financiero completo en hoja de cálculo Excel?",
+            reply_markup=excel_btn
         )
     except psycopg2.Error as e:
         logger.error(f"Error de base de datos al generar informe: {e}", exc_info=True)
@@ -1123,6 +1269,34 @@ async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_
         logger.error(f"Error inesperado al generar informe: {e}", exc_info=True)
         await update.message.reply_text("❌ Hubo un error inesperado al generar el informe.", reply_markup=create_main_menu_keyboard())
     return MENU
+
+async def descargar_excel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handler para descargar el informe en formato Excel (.xlsx)."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    try:
+        parts = data.split("_")
+        mes = int(parts[2])
+        anio = int(parts[3])
+        report_data = await obtener_informe_mensual(mes, anio)
+        excel_buffer = exportar_informe_excel(mes, anio, report_data)
+
+        meses = [
+            "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        ]
+        nombre_mes = meses[mes]
+        await context.bot.send_document(
+            chat_id=query.message.chat_id,
+            document=InputFile(excel_buffer, filename=f"Reporte_Financiero_{nombre_mes}_{anio}.xlsx"),
+            caption=f"📊 *Reporte Financiero Excel* — {nombre_mes} {anio}",
+            parse_mode=ParseMode.MARKDOWN_V2
+        )
+    except Exception as e:
+        logger.error(f"Error generando Excel ({data}): {e}", exc_info=True)
+        await context.bot.send_message(chat_id=query.message.chat_id, text="❌ Ocurrió un error al generar el archivo Excel.")
 
 async def deshacer_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler del menú deshacer."""
