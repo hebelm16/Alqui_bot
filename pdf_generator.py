@@ -188,14 +188,6 @@ def crear_informe_pdf(datos_informe: dict, mes: int, anio: int):
         tabla_gastos.setStyle(TableStyle(t_style_g))
         elementos.append(KeepTogether(tabla_gastos))
 
-    # --- Pie de página al final del documento ---
-    elementos.append(Spacer(1, 25))
-    footer_p = Paragraph(
-        "Documento confidencial generado automáticamente por Alqui_bot • Sistema de Administración y Control de Propiedades",
-        ParagraphStyle('FooterNote', parent=styles['Italic'], fontName='Helvetica-Oblique', fontSize=8, textColor=colors.HexColor('#94A3B8'), alignment=1)
-    )
-    elementos.append(KeepTogether([footer_p]))
-
     doc.build(elementos)
     buffer.seek(0)
     return buffer

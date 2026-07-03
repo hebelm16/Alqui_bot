@@ -1290,8 +1290,8 @@ async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_
             )
             await update.message.reply_photo(
                 photo=InputFile(grafico_mes_buffer, filename=f"Grafico_{nombre_mes}_{anio}.png"),
-                caption=f"📈 *Gráfico Financiero • {nombre_mes.upper()} {anio}*\nDesglose visual de cobros, gastos y neto.",
-                parse_mode=ParseMode.MARKDOWN_V2
+                caption=f"📈 <b>Gráfico Financiero • {nombre_mes.upper()} {anio}</b>\nDesglose visual de cobros, gastos y neto.",
+                parse_mode=ParseMode.HTML
             )
         except Exception as graf_err:
             logger.warning(f"No se pudo generar/enviar gráfico mensual: {graf_err}")
