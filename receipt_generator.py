@@ -182,13 +182,24 @@ def crear_recibo_pdf(pago_id: int, fecha: datetime | date | str, inquilino: str,
     return buffer
 
 def get_font(size: int, bold: bool = False):
-    font_names = ['arialbd.ttf' if bold else 'arial.ttf', 'calibrib.ttf' if bold else 'calibri.ttf', 'segoeuib.ttf' if bold else 'segoeui.ttf']
+    font_names = [
+        'arialbd.ttf' if bold else 'arial.ttf',
+        'calibrib.ttf' if bold else 'calibri.ttf',
+        'segoeuib.ttf' if bold else 'segoeui.ttf',
+        'DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf' if bold else '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        'LiberationSans-Bold.ttf' if bold else 'LiberationSans-Regular.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf' if bold else '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+    ]
     for fn in font_names:
         try:
             return ImageFont.truetype(fn, size)
         except IOError:
             continue
-    return ImageFont.load_default()
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        return ImageFont.load_default()
 
 def crear_recibo_png(pago_id: int, fecha: datetime | date | str, inquilino: str, monto: Decimal | float) -> io.BytesIO:
     """Genera un recibo de pago profesional en formato de imagen PNG."""
