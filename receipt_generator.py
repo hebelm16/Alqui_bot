@@ -15,7 +15,23 @@ def format_currency_pdf(value: float | Decimal) -> str:
     except (ValueError, TypeError):
         return "RD$0.00"
 
-def crear_recibo_pdf(pago_id: int, fecha: datetime | date | str, inquilino: str, monto: Decimal | float) -> io.BytesIO:
+def _obtener_periodo(fecha: datetime | date | str, periodo: str = None) -> str:
+    if periodo:
+        return periodo
+    meses_nombres = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    if isinstance(fecha, (datetime, date)):
+        return f"{meses_nombres[fecha.month]} {fecha.year}"
+    try:
+        f_obj = datetime.strptime(str(fecha), '%Y-%m-%d')
+        return f"{meses_nombres[f_obj.month]} {f_obj.year}"
+    except Exception:
+        try:
+            f_obj = datetime.strptime(str(fecha), '%d/%m/%Y')
+            return f"{meses_nombres[f_obj.month]} {f_obj.year}"
+        except Exception:
+            return str(fecha)
+
+def crear_recibo_pdf(pago_id: int, fecha: datetime | date | str, inquilino: str, monto: Decimal | float, periodo: str = None) -> io.BytesIO:
     """
     Genera un comprobante digital de pago en formato PDF.
     Devuelve un buffer io.BytesIO con el contenido del archivo.
@@ -49,8 +65,8 @@ def crear_recibo_pdf(pago_id: int, fecha: datetime | date | str, inquilino: str,
         'SubHeaderStyle',
         parent=styles['Normal'],
         fontName='Helvetica',
-        fontSize=11,
-        leading=14,
+        fontSize=12,
+        leading=16,
         textColor=colors.HexColor('#4a5568'),
         alignment=1 # Centro
     )
@@ -60,7 +76,7 @@ def crear_recibo_pdf(pago_id: int, fecha: datetime | date | str, inquilino: str,
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
         fontSize=14,
-        leading=16,
+        leading=18,
         textColor=colors.white,
         alignment=1
     )
@@ -87,18 +103,18 @@ def crear_recibo_pdf(pago_id: int, fecha: datetime | date | str, inquilino: str,
         'MontoStyle',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=16,
-        leading=20,
+        fontSize=14,
+        leading=18,
         textColor=colors.HexColor('#2b6cb0')
     )
 
     footer_style = ParagraphStyle(
         'FooterStyle',
-        parent=styles['Italic'],
-        fontName='Helvetica-Oblique',
+        parent=styles['Normal'],
+        fontName='Helvetica',
         fontSize=9,
         leading=12,
-        textColor=colors.HexColor('#718096'),
+        textColor=colors.HexColor('#a0aec0'),
         alignment=1
     )
 
@@ -112,11 +128,14 @@ def crear_recibo_pdf(pago_id: int, fecha: datetime | date | str, inquilino: str,
         except ValueError:
             fecha_str = str(fecha)
 
+    periodo_str = _obtener_periodo(fecha, periodo)
+    concepto_str = f"Pago del mes {periodo_str}"
+
     elementos = []
 
     # 1. Encabezado principal
     elementos.append(Paragraph("SISTEMA DE GESTIÓN DE ALQUILERES", header_style))
-    elementos.append(Spacer(1, 4))
+    elementos.append(Spacer(1, 6))
     elementos.append(Paragraph("Comprobante Digital Oficial de Pago", sub_header_style))
     elementos.append(Spacer(1, 20))
 
@@ -138,7 +157,7 @@ def crear_recibo_pdf(pago_id: int, fecha: datetime | date | str, inquilino: str,
     detalle_data = [
         [Paragraph("Recibido de:", label_style), Paragraph(f"<b>{inquilino}</b>", value_style)],
         [Paragraph("Fecha de Pago:", label_style), Paragraph(fecha_str, value_style)],
-        [Paragraph("Concepto:", label_style), Paragraph("Pago de cuota de alquiler", value_style)],
+        [Paragraph("Concepto:", label_style), Paragraph(concepto_str, value_style)],
         [Paragraph("Monto Recibido:", label_style), Paragraph(format_currency_pdf(monto), monto_style)],
         [Paragraph("Estado de Operación:", label_style), Paragraph("<font color='#2f855a'><b>APROBADO / REGISTRADO</b></font>", value_style)]
     ]
@@ -161,7 +180,7 @@ def crear_recibo_pdf(pago_id: int, fecha: datetime | date | str, inquilino: str,
     firma_data = [
         ["", ""],
         ["________________________________________", ""],
-        ["Administración — Alqui_bot", "Sello Digital Verificado"]
+        ["Hecbel Castillo", "Sello Digital Verificado"]
     ]
     firma_table = Table(firma_data, colWidths=[3.5 * inch, 3.0 * inch])
     firma_table.setStyle(TableStyle([
@@ -175,13 +194,20 @@ def crear_recibo_pdf(pago_id: int, fecha: datetime | date | str, inquilino: str,
     elementos.append(Spacer(1, 40))
 
     # 5. Pie de página
-    elementos.append(Paragraph("Este documento es un comprobante digital emitido automáticamente por Alqui_bot.<br/>Conserve este archivo como constancia de su pago.", footer_style))
+    elementos.append(Paragraph("Este documento es un comprobante digital emitido por Hecbel Castillo.<br/>Conserve este archivo como constancia de su pago.", footer_style))
 
     doc.build(elementos)
     buffer.seek(0)
     return buffer
 
 def get_font(size: int, bold: bool = False):
+    import matplotlib.font_manager as fm
+    try:
+        prop = fm.FontProperties(family='sans-serif', weight='bold' if bold else 'normal')
+        font_path = fm.findfont(prop)
+        return ImageFont.truetype(font_path, size)
+    except Exception:
+        pass
     font_names = [
         'arialbd.ttf' if bold else 'arial.ttf',
         'calibrib.ttf' if bold else 'calibri.ttf',
@@ -201,7 +227,7 @@ def get_font(size: int, bold: bool = False):
     except TypeError:
         return ImageFont.load_default()
 
-def crear_recibo_png(pago_id: int, fecha: datetime | date | str, inquilino: str, monto: Decimal | float) -> io.BytesIO:
+def crear_recibo_png(pago_id: int, fecha: datetime | date | str, inquilino: str, monto: Decimal | float, periodo: str = None) -> io.BytesIO:
     """Genera un recibo de pago profesional en formato de imagen PNG."""
     width, height = 800, 950
     img = Image.new('RGB', (width, height), color='#FFFFFF')
@@ -224,6 +250,9 @@ def crear_recibo_png(pago_id: int, fecha: datetime | date | str, inquilino: str,
         except ValueError:
             fecha_str = str(fecha)
 
+    periodo_str = _obtener_periodo(fecha, periodo)
+    concepto_str = f"Pago del mes {periodo_str}"
+
     # 1. Encabezado
     draw.text((width//2, 50), "SISTEMA DE GESTIÓN DE ALQUILERES", fill='#1a365d', font=font_title, anchor="mm")
     draw.text((width//2, 90), "Comprobante Digital Oficial de Pago", fill='#4a5568', font=font_sub, anchor="mm")
@@ -240,7 +269,7 @@ def crear_recibo_png(pago_id: int, fecha: datetime | date | str, inquilino: str,
     items = [
         ("Recibido de:", inquilino, font_val, '#1a202c'),
         ("Fecha de Pago:", fecha_str, font_val, '#1a202c'),
-        ("Concepto:", "Pago de cuota de alquiler", font_val, '#1a202c'),
+        ("Concepto:", concepto_str, font_val, '#1a202c'),
         ("Monto Recibido:", format_currency_pdf(monto), font_monto, '#2b6cb0'),
         ("Estado de Operación:", "APROBADO / REGISTRADO", font_label, '#2f855a')
     ]
@@ -256,11 +285,11 @@ def crear_recibo_png(pago_id: int, fecha: datetime | date | str, inquilino: str,
     # 4. Firma
     y_firma = 760
     draw.line([(width//2 - 150, y_firma), (width//2 + 150, y_firma)], fill='#718096', width=2)
-    draw.text((width//2, y_firma + 25), "Administración — Alqui_bot", fill='#4a5568', font=font_sub, anchor="mm")
+    draw.text((width//2, y_firma + 25), "Hecbel Castillo", fill='#4a5568', font=font_sub, anchor="mm")
     draw.text((width//2, y_firma + 55), "Sello Digital Verificado", fill='#718096', font=font_footer, anchor="mm")
 
     # 5. Pie de página
-    draw.text((width//2, 890), "Este documento es un comprobante digital emitido automáticamente por Alqui_bot.", fill='#a0aec0', font=font_footer, anchor="mm")
+    draw.text((width//2, 890), "Este documento es un comprobante digital emitido por Hecbel Castillo.", fill='#a0aec0', font=font_footer, anchor="mm")
     draw.text((width//2, 915), "Conserve este archivo como constancia de su pago.", fill='#a0aec0', font=font_footer, anchor="mm")
 
     buffer = io.BytesIO()

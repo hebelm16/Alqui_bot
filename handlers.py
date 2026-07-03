@@ -120,12 +120,19 @@ async def _save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 except Exception as e:
                     logger.warning(f"No se pudo obtener mes de pago pendiente para {detalle}: {e}")
                 
+                meses_lista = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+                if mes_alquiler and anio_alquiler:
+                    p_str = f"{meses_lista[mes_alquiler]} {anio_alquiler}"
+                else:
+                    p_str = f"{meses_lista[fecha_registro.month]} {fecha_registro.year}"
+
                 pago_id = await registrar_pago(fecha_registro, detalle, monto, mes_alquiler, anio_alquiler)
                 context.user_data['ultimo_recibo'] = {
                     'id': pago_id,
                     'fecha': fecha_registro.strftime('%Y-%m-%d'),
                     'inquilino': detalle,
-                    'monto': str(monto)
+                    'monto': str(monto),
+                    'periodo': p_str
                 }
                 mensaje = (
                     f"✅ Pago registrado correctamente:\n"
@@ -464,10 +471,11 @@ async def descargar_recibo_callback(update: Update, context: ContextTypes.DEFAUL
     fecha_str = recibo_data['fecha']
     inquilino = recibo_data['inquilino']
     monto = Decimal(recibo_data['monto'])
+    periodo = recibo_data.get('periodo')
 
     try:
         if data == "dl_recibo_pdf":
-            pdf_buffer = crear_recibo_pdf(pago_id, fecha_str, inquilino, monto)
+            pdf_buffer = crear_recibo_pdf(pago_id, fecha_str, inquilino, monto, periodo)
             await context.bot.send_document(
                 chat_id=query.message.chat_id,
                 document=InputFile(pdf_buffer, filename=f"Recibo_{inquilino.replace(' ', '_')}_{fecha_str}.pdf"),
@@ -475,7 +483,7 @@ async def descargar_recibo_callback(update: Update, context: ContextTypes.DEFAUL
                 parse_mode=ParseMode.HTML
             )
         elif data == "dl_recibo_png":
-            png_buffer = crear_recibo_png(pago_id, fecha_str, inquilino, monto)
+            png_buffer = crear_recibo_png(pago_id, fecha_str, inquilino, monto, periodo)
             await context.bot.send_photo(
                 chat_id=query.message.chat_id,
                 photo=InputFile(png_buffer, filename=f"Recibo_{inquilino.replace(' ', '_')}_{fecha_str}.png"),

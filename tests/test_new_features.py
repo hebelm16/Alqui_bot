@@ -92,3 +92,12 @@ def test_generar_grafico_mensual():
     content = img_buffer.getvalue()
     assert len(content) > 1000
     assert content.startswith(b"\x89PNG")
+
+def test_crear_recibos_custom():
+    from receipt_generator import crear_recibo_png, crear_recibo_pdf
+    png_buf = crear_recibo_png(151, '2026-07-03', 'Victor', Decimal('8000'), periodo='Julio 2026')
+    assert png_buf is not None
+    assert png_buf.getvalue().startswith(b"\x89PNG")
+    pdf_buf = crear_recibo_pdf(151, '2026-07-03', 'Victor', Decimal('8000'), periodo='Julio 2026')
+    assert pdf_buf is not None
+    assert pdf_buf.getvalue().startswith(b"%PDF")
