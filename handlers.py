@@ -471,16 +471,16 @@ async def descargar_recibo_callback(update: Update, context: ContextTypes.DEFAUL
             await context.bot.send_document(
                 chat_id=query.message.chat_id,
                 document=InputFile(pdf_buffer, filename=f"Recibo_{inquilino.replace(' ', '_')}_{fecha_str}.pdf"),
-                caption=f"📄 *Comprobante PDF #{pago_id:04d}*\nInquilino: {escape_markdown(inquilino, 2)}\nMonto: {escape_markdown(format_currency(monto), 2)}",
-                parse_mode=ParseMode.MARKDOWN_V2
+                caption=f"📄 <b>Comprobante PDF #{pago_id:04d}</b>\nInquilino: {inquilino}\nMonto: {format_currency(monto)}",
+                parse_mode=ParseMode.HTML
             )
         elif data == "dl_recibo_png":
             png_buffer = crear_recibo_png(pago_id, fecha_str, inquilino, monto)
             await context.bot.send_photo(
                 chat_id=query.message.chat_id,
                 photo=InputFile(png_buffer, filename=f"Recibo_{inquilino.replace(' ', '_')}_{fecha_str}.png"),
-                caption=f"🖼️ *Comprobante Imagen #{pago_id:04d}*\nInquilino: {escape_markdown(inquilino, 2)}\nMonto: {escape_markdown(format_currency(monto), 2)}",
-                parse_mode=ParseMode.MARKDOWN_V2
+                caption=f"🖼️ <b>Comprobante Imagen #{pago_id:04d}</b>\nInquilino: {inquilino}\nMonto: {format_currency(monto)}",
+                parse_mode=ParseMode.HTML
             )
     except Exception as e:
         logger.error(f"Error generando recibo ({data}): {e}", exc_info=True)
@@ -1338,8 +1338,8 @@ async def descargar_excel_callback(update: Update, context: ContextTypes.DEFAULT
         await context.bot.send_document(
             chat_id=query.message.chat_id,
             document=InputFile(excel_buffer, filename=f"Reporte_Financiero_{nombre_mes}_{anio}.xlsx"),
-            caption=f"📊 *Reporte Financiero Excel* — {nombre_mes} {anio}",
-            parse_mode=ParseMode.MARKDOWN_V2
+            caption=f"📊 <b>Reporte Financiero Excel</b> — {nombre_mes} {anio}",
+            parse_mode=ParseMode.HTML
         )
     except Exception as e:
         logger.error(f"Error generando Excel ({data}): {e}", exc_info=True)
