@@ -68,3 +68,27 @@ async def test_save_transaction_pago_real_date():
         await _save_transaction(mock_update, mock_context, 'pago')
         # Verifica que la fecha guardada sea la fecha real (2026-07-03) y el periodo sea mes 6 (Junio) y anio 2026
         mock_reg.assert_called_once_with(fecha_real, "Carlos", Decimal("15000"), 6, 2026)
+
+def test_crear_informe_pdf_premium():
+    from pdf_generator import crear_informe_pdf
+    datos = {
+        'total_ingresos': Decimal('50000'),
+        'total_gastos': Decimal('10000'),
+        'total_comision': Decimal('2500'),
+        'monto_neto': Decimal('37500'),
+        'pagos_mes': [(1, '2026-07-01', 'Juan Perez', Decimal('50000'))],
+        'gastos_mes': [(1, '2026-07-02', 'Plomero', Decimal('10000'))]
+    }
+    pdf_buffer = crear_informe_pdf(datos, 7, 2026)
+    assert pdf_buffer is not None
+    content = pdf_buffer.getvalue()
+    assert len(content) > 2000
+    assert content.startswith(b"%PDF")
+
+def test_generar_grafico_mensual():
+    from chart_generator import generar_grafico_mensual
+    img_buffer = generar_grafico_mensual(7, 2026, Decimal('50000'), Decimal('10000'), Decimal('2500'), Decimal('37500'))
+    assert img_buffer is not None
+    content = img_buffer.getvalue()
+    assert len(content) > 1000
+    assert content.startswith(b"\x89PNG")

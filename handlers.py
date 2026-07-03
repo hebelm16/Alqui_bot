@@ -19,7 +19,7 @@ from database import (
 )
 from config import AUTHORIZED_USERS
 from pdf_generator import crear_informe_pdf
-from chart_generator import generar_grafico_resumen
+from chart_generator import generar_grafico_resumen, generar_grafico_mensual
 from receipt_generator import crear_recibo_pdf, crear_recibo_png
 from export_generator import exportar_informe_excel
 
@@ -1278,10 +1278,27 @@ async def generar_informe_mensual(update: Update, context: ContextTypes.DEFAULT_
         ]
         nombre_mes = meses[mes]
         nombre_archivo = f"Informe_{nombre_mes}_{anio}.pdf"
+
+        # --- Gráfica Visual FinTech del Mes ---
+        try:
+            grafico_mes_buffer = generar_grafico_mensual(
+                mes, anio,
+                report_data.get('total_ingresos', Decimal('0')),
+                report_data.get('total_gastos', Decimal('0')),
+                report_data.get('total_comision', Decimal('0')),
+                report_data.get('monto_neto', Decimal('0'))
+            )
+            await update.message.reply_photo(
+                photo=InputFile(grafico_mes_buffer, filename=f"Grafico_{nombre_mes}_{anio}.png"),
+                caption=f"📈 *Gráfico Financiero • {nombre_mes.upper()} {anio}*\nDesglose visual de cobros, gastos y neto.",
+                parse_mode=ParseMode.MARKDOWN_V2
+            )
+        except Exception as graf_err:
+            logger.warning(f"No se pudo generar/enviar gráfico mensual: {graf_err}")
         
         await update.message.reply_document(
             document=InputFile(pdf_buffer, filename=nombre_archivo),
-            caption=f"📄 Aquí tienes el informe PDF para {nombre_mes} de {anio}.",
+            caption=f"📄 Aquí tienes el informe ejecutivo en PDF para {nombre_mes} de {anio}.",
             reply_markup=create_main_menu_keyboard()
         )
 
