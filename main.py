@@ -88,6 +88,7 @@ async def main():
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
         allow_reentry=True,
+        per_message=False,
     ))
 
     # === HANDLER: Registrar Gasto ===
@@ -127,6 +128,7 @@ async def main():
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
         allow_reentry=True,
+        per_message=False,
     ))
 
     # === HANDLER: Descarga de recibo y excel (Callback global) ===
@@ -148,6 +150,7 @@ async def main():
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Cancelar$"), volver_menu)],
         allow_reentry=True,
+        per_message=False,
     ))
 
     # === HANDLER: Ver Resumen ===
