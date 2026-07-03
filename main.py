@@ -1,8 +1,12 @@
 import os
 import sys
 import logging
+import warnings
 from datetime import time, timezone, timedelta
 from telegram.request import HTTPXRequest
+from telegram.warnings import PTBUserWarning
+
+warnings.filterwarnings("ignore", category=PTBUserWarning)
 
 import asyncio
 # En Windows, se requiere una política de eventos específica para aiopg
