@@ -106,14 +106,15 @@ def test_crear_recibos_custom():
 async def test_recordatorios_without_args():
     from unittest.mock import patch, AsyncMock, MagicMock
     from database import obtener_inquilinos_para_recordatorio
-    with patch('database.pool') as mock_pool:
+    with patch('database.pool') as mock_pool, patch('database.obtener_mes_pago_pendiente') as mock_pend:
         mock_conn = MagicMock()
         mock_cur = AsyncMock()
         mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
         mock_conn.cursor.return_value.__aenter__.return_value = mock_cur
         mock_cur.fetchall.return_value = [("Carlos", 5), ("Ana", 28)]
+        mock_pend.side_effect = [date(2026, 6, 5), date(2026, 7, 28)]
         
         res = await obtener_inquilinos_para_recordatorio()
         assert isinstance(res, dict)
-        assert "vencidos" in res
-        assert "proximos" in res
+        assert "Carlos" in res["vencidos"]
+        assert "Ana" in res["proximos"]

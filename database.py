@@ -400,40 +400,48 @@ async def borrar_transaccion(trans_id: int, tipo: str) -> bool:
             return False
 
 async def obtener_inquilinos_para_recordatorio(dia_objetivo: int = None) -> dict:
-    """Devuelve inquilinos activos categorizados en 'vencidos' y 'proximos' pendientes de pago en el mes actual."""
-    hoy = datetime.now(DO_TZ)
+    """Devuelve inquilinos activos categorizados en 'vencidos' (mes anterior o día ya pasado) y 'proximos' pendientes de pago."""
+    hoy = datetime.now(DO_TZ).date()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(
-                """
-                SELECT nombre, dia_pago FROM inquilinos
-                WHERE activo = TRUE
-                  AND NOT EXISTS (
-                      SELECT 1 FROM pagos
-                      WHERE inquilino = inquilinos.nombre
-                        AND COALESCE(mes_alquiler, EXTRACT(MONTH FROM fecha::date)::int) = %s
-                        AND COALESCE(anio_alquiler, EXTRACT(YEAR FROM fecha::date)::int) = %s
-                  )
-                """,
-                (hoy.month, hoy.year)
-            )
+            await cur.execute("SELECT nombre, dia_pago FROM inquilinos WHERE activo = TRUE")
             rows = await cur.fetchall()
             
-            vencidos = []
-            proximos = []
-            for nombre, dia_pago in rows:
-                if dia_objetivo is not None:
-                    if dia_pago == dia_objetivo:
-                        proximos.append(nombre)
+    vencidos = []
+    proximos = []
+    for nombre, dia_pago in rows:
+        fecha_pend = await obtener_mes_pago_pendiente(nombre)
+        if not fecha_pend:
+            if dia_pago:
+                try:
+                    fecha_pend = date(hoy.year, hoy.month, dia_pago)
+                except ValueError:
+                    fecha_pend = hoy
+            else:
+                fecha_pend = hoy
+
+        # Si ya pagó todo hasta el mes actual (su próxima fecha pendiente está en el futuro del mes actual)
+        if (fecha_pend.year, fecha_pend.month) > (hoy.year, hoy.month):
+            continue
+
+        # Caso 1: Adeuda un mes anterior (ej. estamos en julio y debe junio o antes) -> Vencido
+        if (fecha_pend.year, fecha_pend.month) < (hoy.year, hoy.month):
+            vencidos.append(nombre)
+        # Caso 2: Adeuda el mes actual
+        elif (fecha_pend.year, fecha_pend.month) == (hoy.year, hoy.month):
+            if dia_objetivo is not None:
+                if dia_pago == dia_objetivo:
+                    proximos.append(nombre)
+            else:
+                if dia_pago and dia_pago < hoy.day:
+                    vencidos.append(nombre)
                 else:
-                    if dia_pago and dia_pago < hoy.day:
-                        vencidos.append(nombre)
-                    else:
-                        proximos.append(nombre)
-            return {
-                "vencidos": vencidos,
-                "proximos": proximos
-            }
+                    proximos.append(nombre)
+
+    return {
+        "vencidos": vencidos,
+        "proximos": proximos
+    }
 
 async def obtener_estado_cuenta_inquilino(nombre: str, anio: int) -> dict:
     """Obtiene el historial de pagos y estado financiero de un inquilino en un año."""
