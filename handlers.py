@@ -1106,26 +1106,30 @@ async def enviar_recordatorios_pago(context: ContextTypes.DEFAULT_TYPE) -> None:
 
         if not vencidos and not proximos:
             logger.info("No hay recordatorios de pago para enviar hoy.")
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="🔔 <b>Recordatorios de Pago</b> 🔔\n\n🎉 ¡Excelente! No tienes pagos vencidos ni pendientes por reportar en este momento.",
+                parse_mode=ParseMode.HTML
+            )
             return
 
-        # ✅ CORREGIDO: Mensaje sin raw string
-        mensaje = "🔔 *Recordatorios de Pago* 🔔\n\n"
+        mensaje = "🔔 <b>Recordatorios de Pago</b> 🔔\n\n"
 
         if vencidos:
-            mensaje += "*Pagos Vencidos* 😡\n"
+            mensaje += "<b>Pagos Vencidos</b> 😡\n"
             for nombre in vencidos:
-                mensaje += f"\\- El pago de *{md(nombre)}* está vencido y no se ha registrado\\.\n"
+                mensaje += f"• El pago de <b>{nombre}</b> está vencido y no se ha registrado.\n"
             mensaje += "\n"
 
         if proximos:
-            mensaje += "*Pagos Próximos a Vencer* ⚠️\n"
+            mensaje += "<b>Pagos Próximos a Vencer / Pendientes</b> ⚠️\n"
             for nombre in proximos:
-                mensaje += f"\\- El pago de *{md(nombre)}* está próximo a vencer y no se ha registrado aún\\.\n"
+                mensaje += f"• El pago de <b>{nombre}</b> está próximo o pendiente por reportar en este mes.\n"
         
         await context.bot.send_message(
             chat_id=chat_id, 
             text=mensaje, 
-            parse_mode=ParseMode.MARKDOWN_V2
+            parse_mode=ParseMode.HTML
         )
         logger.info(f"Recordatorios de pago enviados a {chat_id}.")
 

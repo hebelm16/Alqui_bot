@@ -399,15 +399,15 @@ async def borrar_transaccion(trans_id: int, tipo: str) -> bool:
                 return True
             return False
 
-async def obtener_inquilinos_para_recordatorio(dia_objetivo: int) -> list:
-    """Devuelve inquilinos activos con día de pago igual a dia_objetivo que no han pagado el mes actual."""
+async def obtener_inquilinos_para_recordatorio(dia_objetivo: int = None) -> dict:
+    """Devuelve inquilinos activos categorizados en 'vencidos' y 'proximos' pendientes de pago en el mes actual."""
     hoy = datetime.now(DO_TZ)
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT nombre FROM inquilinos
-                WHERE activo = TRUE AND dia_pago = %s
+                SELECT nombre, dia_pago FROM inquilinos
+                WHERE activo = TRUE
                   AND NOT EXISTS (
                       SELECT 1 FROM pagos
                       WHERE inquilino = inquilinos.nombre
@@ -415,10 +415,25 @@ async def obtener_inquilinos_para_recordatorio(dia_objetivo: int) -> list:
                         AND COALESCE(anio_alquiler, EXTRACT(YEAR FROM fecha::date)::int) = %s
                   )
                 """,
-                (dia_objetivo, hoy.month, hoy.year)
+                (hoy.month, hoy.year)
             )
             rows = await cur.fetchall()
-            return [r[0] for r in rows]
+            
+            vencidos = []
+            proximos = []
+            for nombre, dia_pago in rows:
+                if dia_objetivo is not None:
+                    if dia_pago == dia_objetivo:
+                        proximos.append(nombre)
+                else:
+                    if dia_pago and dia_pago < hoy.day:
+                        vencidos.append(nombre)
+                    else:
+                        proximos.append(nombre)
+            return {
+                "vencidos": vencidos,
+                "proximos": proximos
+            }
 
 async def obtener_estado_cuenta_inquilino(nombre: str, anio: int) -> dict:
     """Obtiene el historial de pagos y estado financiero de un inquilino en un año."""

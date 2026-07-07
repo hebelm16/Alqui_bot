@@ -101,3 +101,19 @@ def test_crear_recibos_custom():
     pdf_buf = crear_recibo_pdf(151, '2026-07-03', 'Victor', Decimal('8000'), periodo='Julio 2026')
     assert pdf_buf is not None
     assert pdf_buf.getvalue().startswith(b"%PDF")
+
+@pytest.mark.asyncio
+async def test_recordatorios_without_args():
+    from unittest.mock import patch, AsyncMock, MagicMock
+    from database import obtener_inquilinos_para_recordatorio
+    with patch('database.pool') as mock_pool:
+        mock_conn = MagicMock()
+        mock_cur = AsyncMock()
+        mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+        mock_conn.cursor.return_value.__aenter__.return_value = mock_cur
+        mock_cur.fetchall.return_value = [("Carlos", 5), ("Ana", 28)]
+        
+        res = await obtener_inquilinos_para_recordatorio()
+        assert isinstance(res, dict)
+        assert "vencidos" in res
+        assert "proximos" in res

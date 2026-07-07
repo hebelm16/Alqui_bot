@@ -204,6 +204,12 @@ async def main():
                 time=time(hour=8, minute=0, tzinfo=do_tz),
                 chat_id=user_id
             )
+            # Recordatorio inmediato al reiniciar/iniciar el bot (3 segundos después de arrancar)
+            application.job_queue.run_once(
+                enviar_recordatorios_pago,
+                when=3,
+                chat_id=user_id
+            )
 
     logger.info("Bot iniciado correctamente.")
 
