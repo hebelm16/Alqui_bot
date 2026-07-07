@@ -248,11 +248,11 @@ async def obtener_informe_mensual(mes: int, anio: int) -> dict:
     """Calcula el informe mensual de ingresos, gastos, comisión y neto."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            await cur.execute("SELECT SUM(monto) FROM pagos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s", (mes, anio))
+            await cur.execute("SELECT SUM(monto) FROM pagos WHERE COALESCE(mes_alquiler, EXTRACT(MONTH FROM fecha::date)::int) = %s AND COALESCE(anio_alquiler, EXTRACT(YEAR FROM fecha::date)::int) = %s", (mes, anio))
             total_pagos_mes = (await cur.fetchone())[0] or Decimal('0.0')
             await cur.execute("SELECT SUM(monto) FROM gastos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s", (mes, anio))
             total_gastos_mes = (await cur.fetchone())[0] or Decimal('0.0')
-            await cur.execute("SELECT id, fecha, inquilino, monto FROM pagos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY id ASC", (mes, anio))
+            await cur.execute("SELECT id, fecha, inquilino, monto FROM pagos WHERE COALESCE(mes_alquiler, EXTRACT(MONTH FROM fecha::date)::int) = %s AND COALESCE(anio_alquiler, EXTRACT(YEAR FROM fecha::date)::int) = %s ORDER BY id ASC", (mes, anio))
             pagos_mes = await cur.fetchall()
             await cur.execute("SELECT id, fecha, descripcion, monto FROM gastos WHERE EXTRACT(MONTH FROM fecha::date) = %s AND EXTRACT(YEAR FROM fecha::date) = %s ORDER BY id ASC", (mes, anio))
             gastos_mes = await cur.fetchall()

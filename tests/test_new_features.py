@@ -118,3 +118,24 @@ async def test_recordatorios_without_args():
         assert isinstance(res, dict)
         assert "Carlos" in res["vencidos"]
         assert "Ana" in res["proximos"]
+
+@pytest.mark.asyncio
+async def test_obtener_informe_mensual_by_period():
+    from unittest.mock import patch, AsyncMock, MagicMock
+    from database import obtener_informe_mensual
+    with patch('database.pool') as mock_pool:
+        mock_conn = MagicMock()
+        mock_cur = AsyncMock()
+        mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+        mock_conn.cursor.return_value.__aenter__.return_value = mock_cur
+        
+        # mock cur returns for sum of pagos, sum of gastos, list of pagos, list of gastos
+        mock_cur.fetchone.side_effect = [(Decimal('20000'),), (Decimal('5000'),)]
+        mock_cur.fetchall.side_effect = [[(1, date(2026, 7, 6), 'Carlos', Decimal('20000'))], []]
+        
+        res = await obtener_informe_mensual(6, 2026)
+        assert res["total_ingresos"] == Decimal('20000')
+        assert len(res["pagos_mes"]) == 1
+        # verify the SQL call uses COALESCE(mes_alquiler, ...)
+        calls = [c[0][0] for c in mock_cur.execute.call_args_list]
+        assert any("COALESCE(mes_alquiler" in call for call in calls)
